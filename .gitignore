@@ -1,0 +1,12 @@
+# OS junk
+.DS_Store
+Thumbs.db
+*.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Local backups (เก็บไว้นอก repo)
+backups/
+*_BACKUP*.html
