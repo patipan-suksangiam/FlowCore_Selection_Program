@@ -10,3 +10,6 @@ __pycache__/
 # Local backups (เก็บไว้นอก repo)
 backups/
 *_BACKUP*.html
+
+# Local backups (เก็บไว้นอก repo)
+index.backup-*.html

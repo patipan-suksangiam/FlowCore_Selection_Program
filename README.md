@@ -5,6 +5,7 @@
 
 ฟีเจอร์หลัก:
 - ป้อน Duty Point (flow, head, NPSHa ฯลฯ) → เลือกรุ่น → ปรับกราฟ → เลือก Option → **Datasheet**
+- **เลือกขนาดมอเตอร์ (kW) ได้จาก Dropdown** — ค่าเริ่มต้นเป็น Auto (ขนาดที่แนะนำจาก Max Curve Power) ถ้าเลือก kW เล็กลง (แข่งราคา) จุดบนกราฟที่กำลังเกินมอเตอร์จะแสดงเป็น**เส้นประแดง** + เส้นระดับ kW บน Power panel
 - Datasheet พร้อม **Assembly Drawing แนบอัตโนมัติ** (ดูหัวข้อด้านล่าง)
 - Export Datasheet เป็น PDF (ปุ่ม Print) หรือ HTML (ปุ่ม Save HTML)
 

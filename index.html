@@ -30003,7 +30003,7 @@ function SelectionFlow({ db, setDb, setView }) {
       elecRate: '4.5'
     },
     selectedGroup: null, selectedSize: null,
-    adjustedCurve: { targetFlow: 0, targetHead: 0, speed: '', dia: '', powerKw: 0, costPerHour: 0, costIE1: '-', costIE2: '-', costIE3: '-', costIE4: '-', estEff: 0, estNpshr: 0 }, showInverter: false,
+    adjustedCurve: { targetFlow: 0, targetHead: 0, speed: '', dia: '', powerKw: 0, costPerHour: 0, costIE1: '-', costIE2: '-', costIE3: '-', costIE4: '-', estEff: 0, estNpshr: 0, selectedMotorKw: '', recommendedIECMotor: '-', maxCurvePower: 0 }, showInverter: false,
     selectedMaterial: '', selectedSeal: '', selectedConnection: ''
   });
 
@@ -30700,6 +30700,39 @@ const RenderPumpChartSVG = ({ sz, cur, compact = false, dutyPoint, showInverter 
   const adjPowerPath = getBezierPath(adjPowerData);
   const adjNpshPath = hasNPSH ? getBezierPath(adjNpshData) : '';
 
+  // ===== Motor kW limit → non-runnable segments (red dashed) =====
+  const motorLimitKw = (cur.selectedMotorKw && Number(cur.selectedMotorKw) > 0)
+    ? Number(cur.selectedMotorKw)
+    : (Number(cur.recommendedIECMotor) > 0 ? Number(cur.recommendedIECMotor) : null);
+
+  const splitSegs = (pts, xyFn) => {
+    const run = [], ng = [];
+    if (!pts || !pts.length) return { run, ng };
+    let curRun = [], curNg = [];
+    const flush = () => { if (curRun.length) { run.push(curRun); curRun = []; } if (curNg.length) { ng.push(curNg); curNg = []; } };
+    pts.forEach(p => {
+      const over = motorLimitKw !== null && p.power !== null && p.power > motorLimitKw + 1e-9;
+      const xy = xyFn(p);
+      if (!xy) { flush(); return; }
+      if (over) { if (curRun.length) { run.push(curRun); curRun = []; } curNg.push(xy); }
+      else { if (curNg.length) { ng.push(curNg); curNg = []; } curRun.push(xy); }
+    });
+    flush();
+    return { run, ng };
+  };
+
+  const motorSegs = (pts) => ({
+    head: splitSegs(pts, p => p.head !== null ? { x: toX(p.flow), y: toYHead(p.head) } : null),
+    eff:  splitSegs(pts, p => p.eff  !== null ? { x: toX(p.flow), y: toYEff(p.eff) } : null),
+    power:splitSegs(pts, p => p.power !== null ? { x: toX(p.flow), y: toYPower(p.power) } : null),
+    npsh: splitSegs(pts, p => p.npshr !== null && p.npshr > 0 ? { x: toX(p.flow), y: toYNPSH(p.npshr) } : null),
+  });
+
+  const adjSegs = motorSegs(adjustedPoints);
+  const invSegs = {};
+  if (showInverter) inverterCurves.forEach(({ freq, pts }) => { invSegs[freq] = motorSegs(pts); });
+  const hasMotorLimit = motorLimitKw !== null;
+
 
   const invHeadPaths = {}; const invEffPaths = {}; const invPowPaths = {}; const invNpshPaths = {};
   if (showInverter) {
@@ -30824,51 +30857,76 @@ const RenderPumpChartSVG = ({ sz, cur, compact = false, dutyPoint, showInverter 
 
         {/* Adjusted Curves (Solid) */}
         <g clipPath={`url(#${clipId}-head)`}>
-          <path d={adjHeadPath} fill="none" stroke="#2563eb" strokeWidth="2.5" />
+          {hasMotorLimit
+            ? adjSegs.head.run.map((seg, i) => <path key={`ahr${i}`} d={getBezierPath(seg)} fill="none" stroke="#2563eb" strokeWidth="2.5" />)
+            : <path d={adjHeadPath} fill="none" stroke="#2563eb" strokeWidth="2.5" />}
         </g>
         <g clipPath={`url(#${clipId}-eff)`}>
-          <path d={adjEffPath} fill="none" stroke="#22c55e" strokeWidth="2" strokeDasharray="4 2" />
+          {hasMotorLimit
+            ? adjSegs.eff.run.map((seg, i) => <path key={`aer${i}`} d={getBezierPath(seg)} fill="none" stroke="#22c55e" strokeWidth="2" strokeDasharray="4 2" />)
+            : <path d={adjEffPath} fill="none" stroke="#22c55e" strokeWidth="2" strokeDasharray="4 2" />}
         </g>
         <g clipPath={`url(#${clipId}-pow)`}>
-          {hasPower && <path d={adjPowerPath} fill="none" stroke="#8b5cf6" strokeWidth="2" strokeDasharray="6 2" />}
+          {hasPower && (hasMotorLimit
+            ? adjSegs.power.run.map((seg, i) => <path key={`apr${i}`} d={getBezierPath(seg)} fill="none" stroke="#8b5cf6" strokeWidth="2" strokeDasharray="6 2" />)
+            : <path d={adjPowerPath} fill="none" stroke="#8b5cf6" strokeWidth="2" strokeDasharray="6 2" />)}
         </g>
         <g clipPath={`url(#${clipId}-npsh)`}>
-          {hasNPSH && <path d={adjNpshPath} fill="none" stroke="#f97316" strokeWidth="2" strokeDasharray="2 2" />}
+          {hasNPSH && (hasMotorLimit
+            ? adjSegs.npsh.run.map((seg, i) => <path key={`anr${i}`} d={getBezierPath(seg)} fill="none" stroke="#f97316" strokeWidth="2" strokeDasharray="2 2" />)
+            : <path d={adjNpshPath} fill="none" stroke="#f97316" strokeWidth="2" strokeDasharray="2 2" />)}
         </g>
 
         {/* Inverter Frequency Curves (colored by Hz) */}
-        {showInverter && inverterCurves.map(({ freq }) => (
-          <React.Fragment key={`inv-${freq}`}>
+        {showInverter && inverterCurves.map(({ freq }) => {
+          const segs = invSegs[freq];
+          const headPaths = hasMotorLimit ? segs.head.run.map(getBezierPath) : [invHeadPaths[freq]];
+          const effPaths = hasMotorLimit ? segs.eff.run.map(getBezierPath) : [invEffPaths[freq]];
+          const powPaths = hasMotorLimit ? segs.power.run.map(getBezierPath) : [invPowPaths[freq]];
+          const npshPaths = hasMotorLimit ? segs.npsh.run.map(getBezierPath) : [invNpshPaths[freq]];
+          return (
+            <React.Fragment key={`inv-${freq}`}>
+              <g clipPath={`url(#${clipId}-head)`}>
+                {headPaths.map((d, i) => <path key={`ih${i}`} d={d} fill="none" stroke={invColors[freq]} strokeWidth={freq === 50 ? "2.5" : "1.8"} strokeDasharray={freq === 50 ? "none" : "8 4"} />)}
+              </g>
+              <g clipPath={`url(#${clipId}-eff)`}>
+                {effPaths.map((d, i) => <path key={`ie${i}`} d={d} fill="none" stroke={invColors[freq]} strokeWidth={freq === 50 ? "2" : "1.8"} strokeDasharray={freq === 50 ? "4 2" : "8 4"} />)}
+              </g>
+              <g clipPath={`url(#${clipId}-pow)`}>
+                {hasPower && powPaths.map((d, i) => <path key={`ip${i}`} d={d} fill="none" stroke={invColors[freq]} strokeWidth={freq === 50 ? "2" : "1.8"} strokeDasharray={freq === 50 ? "6 2" : "8 4"} />)}
+              </g>
+              <g clipPath={`url(#${clipId}-npsh)`}>
+                {hasNPSH && npshPaths.map((d, i) => <path key={`in${i}`} d={d} fill="none" stroke={invColors[freq]} strokeWidth={freq === 50 ? "2" : "1.8"} strokeDasharray={freq === 50 ? "2 2" : "8 4"} />)}
+              </g>
+            </React.Fragment>
+          );
+        })}
+
+        {/* Non-Runnable (Exceeds Motor kW) — red dashed overlay */}
+        {hasMotorLimit && (
+          <React.Fragment>
             <g clipPath={`url(#${clipId}-head)`}>
-              {freq === 50 ? (
-                <path d={invHeadPaths[freq]} fill="none" stroke={invColors[freq]} strokeWidth="2.5" />
-              ) : (
-                <path d={invHeadPaths[freq]} fill="none" stroke={invColors[freq]} strokeWidth="1.8" strokeDasharray="8 4" />
-              )}
+              {adjSegs.head.ng.concat(showInverter ? invHz.flatMap(f => invSegs[f].head.ng) : []).map((seg, i) => <path key={`ngh${i}`} d={getBezierPath(seg)} fill="none" stroke="#ef4444" strokeWidth="1.3" strokeDasharray="5 3" />)}
             </g>
             <g clipPath={`url(#${clipId}-eff)`}>
-              {freq === 50 ? (
-                <path d={invEffPaths[freq]} fill="none" stroke={invColors[freq]} strokeWidth="2" strokeDasharray="4 2" />
-              ) : (
-                <path d={invEffPaths[freq]} fill="none" stroke={invColors[freq]} strokeWidth="1.8" strokeDasharray="8 4" />
-              )}
+              {adjSegs.eff.ng.concat(showInverter ? invHz.flatMap(f => invSegs[f].eff.ng) : []).map((seg, i) => <path key={`nge${i}`} d={getBezierPath(seg)} fill="none" stroke="#ef4444" strokeWidth="1.3" strokeDasharray="5 3" />)}
             </g>
             <g clipPath={`url(#${clipId}-pow)`}>
-              {hasPower && (freq === 50 ? (
-                <path d={invPowPaths[freq]} fill="none" stroke={invColors[freq]} strokeWidth="2" strokeDasharray="6 2" />
-              ) : (
-                <path d={invPowPaths[freq]} fill="none" stroke={invColors[freq]} strokeWidth="1.8" strokeDasharray="8 4" />
-              ))}
+              {hasPower && adjSegs.power.ng.concat(showInverter ? invHz.flatMap(f => invSegs[f].power.ng) : []).map((seg, i) => <path key={`ngp${i}`} d={getBezierPath(seg)} fill="none" stroke="#ef4444" strokeWidth="1.3" strokeDasharray="5 3" />)}
             </g>
             <g clipPath={`url(#${clipId}-npsh)`}>
-              {hasNPSH && (freq === 50 ? (
-                <path d={invNpshPaths[freq]} fill="none" stroke={invColors[freq]} strokeWidth="2" strokeDasharray="2 2" />
-              ) : (
-                <path d={invNpshPaths[freq]} fill="none" stroke={invColors[freq]} strokeWidth="1.8" strokeDasharray="8 4" />
-              ))}
+              {hasNPSH && adjSegs.npsh.ng.concat(showInverter ? invHz.flatMap(f => invSegs[f].npsh.ng) : []).map((seg, i) => <path key={`ngn${i}`} d={getBezierPath(seg)} fill="none" stroke="#ef4444" strokeWidth="1.3" strokeDasharray="5 3" />)}
             </g>
           </React.Fragment>
-        ))}
+        )}
+
+        {/* Motor kW Limit Line on Power Panel */}
+        {hasPower && hasMotorLimit && (
+          <g>
+            <line x1="60" y1={toYPower(motorLimitKw)} x2="580" y2={toYPower(motorLimitKw)} stroke="#ef4444" strokeWidth="1" strokeDasharray="3 3" />
+            <text x="580" y={toYPower(motorLimitKw) - 3} textAnchor="end" fill="#ef4444" className="text-[8px] font-bold">Motor {motorLimitKw} kW</text>
+          </g>
+        )}
 
         {/* BEP Markers */}
         {bepPoint && (
@@ -30913,6 +30971,13 @@ const RenderPumpChartSVG = ({ sz, cur, compact = false, dutyPoint, showInverter 
           )}
 
           <text x="220" y="3" fill="#94a3b8" className="text-[8px] italic">* Dashed = Max / Min Boundary</text>
+
+          {hasPower && hasMotorLimit && (
+            <React.Fragment>
+              <line x1="380" y1="0" x2="395" y2="0" stroke="#ef4444" strokeWidth="1.3" strokeDasharray="5 3" />
+              <text x="400" y="3" fill="#ef4444" className="text-[8px] font-bold">&gt; Motor kW (not runnable)</text>
+            </React.Fragment>
+          )}
         </g>
 
         {/* Inverter Legend (second row) */}
@@ -31193,6 +31258,11 @@ function SelectionCurveGraphicalStep({ data, updateData, updateDuty, validPumps,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sz.id, data.dutyPoint.viscosity, data.dutyPoint.density]); 
 
+  const handleMotorChange = (e) => {
+    const v = e.target.value;
+    updateData('adjustedCurve', { ...cur, selectedMotorKw: v });
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-4">
@@ -31268,10 +31338,18 @@ function SelectionCurveGraphicalStep({ data, updateData, updateDuty, validPumps,
                    <span className="font-semibold">Max Curve Power (End):</span> 
                    <span className="font-bold text-blue-700">{Number(cur.maxCurvePower) > 0 ? `${cur.maxCurvePower} kW` : '-'}</span>
                 </div>
-                <div className="flex justify-between items-center bg-emerald-50 border border-emerald-200 rounded p-2 text-emerald-900">
-                   <span className="font-semibold">Rec. IEC Motor Size:</span> 
-                   <span className="font-bold text-lg text-emerald-700">{Number(cur.recommendedIECMotor) > 0 ? `${cur.recommendedIECMotor} kW` : '-'}</span>
+                <div className="flex justify-between items-center bg-emerald-50 border border-emerald-200 rounded p-2 text-emerald-900 gap-2">
+                   <span className="font-semibold text-sm whitespace-nowrap">Motor Size (kW):</span>
+                   <select
+                     value={cur.selectedMotorKw || ''}
+                     onChange={handleMotorChange}
+                     className="border border-emerald-300 rounded px-2 py-1 font-bold text-emerald-700 bg-white text-sm min-w-[110px]"
+                   >
+                     <option value="">Auto (Rec. {cur.recommendedIECMotor} kW)</option>
+                     {standardIECMotors.map(m => <option key={m} value={m}>{m} kW</option>)}
+                   </select>
                 </div>
+                <div className="text-[10px] text-emerald-600 mt-1">Rec. IEC Motor: <b>{Number(cur.recommendedIECMotor) > 0 ? `${cur.recommendedIECMotor} kW` : '-'}</b> · เลือก kW เล็กลงเพื่อแข่งราคา — จุดกราฟที่เกินกำลังมอเตอร์จะแสดงเป็นเส้นประแดง</div>
                 
                 <div className="bg-red-50 p-2 border border-red-200 rounded mt-2 text-xs">
                    <div className="font-bold text-red-700 border-b border-red-200 pb-1 mb-1">Est. Electrical Cost / Hr </div>
@@ -31414,7 +31492,7 @@ function SelectionDatasheet({ db, data, setStep, updateData }) {
                   <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Eff. / NPSHr</td><td className="font-semibold text-right text-emerald-600">{cur.estEff} % / <span className="text-orange-500">{cur.estNpshr} m</span></td></tr>
                   <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Power Consump.</td><td className="font-semibold text-right">{Number(cur.powerKw) > 0 ? cur.powerKw : '-'} kW</td></tr>
                   <tr className="border-b border-slate-100"><td className="py-0.5 text-blue-700 font-medium">Max Curve Power (End)</td><td className="font-semibold text-right text-blue-800">{Number(cur.maxCurvePower) > 0 ? `${cur.maxCurvePower} kW` : '-'}</td></tr>
-                  <tr className="border-b border-slate-100"><td className="py-0.5 text-emerald-700 font-bold">Rec. IEC Motor Size</td><td className="font-bold text-right text-emerald-700 text-sm">{Number(cur.recommendedIECMotor) > 0 ? `${cur.recommendedIECMotor} kW` : '-'}</td></tr>
+                  <tr className="border-b border-slate-100"><td className="py-0.5 text-emerald-700 font-bold">Motor Size</td><td className="font-bold text-right text-emerald-700 text-sm">{Number(cur.selectedMotorKw) > 0 ? `${cur.selectedMotorKw} kW` : (Number(cur.recommendedIECMotor) > 0 ? `${cur.recommendedIECMotor} kW (Rec.)` : '-')}</td></tr>
                   <tr className="border-b border-slate-100">
                     <td className="py-0.5 text-slate-800 font-bold align-top whitespace-nowrap">Elec. Cost/Hr</td>
                     <td className="font-bold text-right text-red-600 text-[9px] leading-tight py-0.5">
