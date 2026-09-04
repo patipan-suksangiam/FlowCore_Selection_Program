@@ -1,74 +1,82 @@
-# FlowCore Selection Program
+# FlowCore Selection Program (Complete Edition)
 
-โปรแกรมเลือกปั๊ม (Pump Selection Program) ของ FlowCore — standalone HTML ไฟล์เดียว
-ใช้ React + Tailwind (CDN) ข้อมูลปั๊ม (DB) ฝังอยู่ในไฟล์ ไม่ต้องติดตั้งอะไร เปิดด้วยเบราว์เซอร์ได้เลย
+โปรแกรมเลือกปั๊ม (Pump Selection Program) ของ FlowCore — standalone HTML
+ใช้ React + Tailwind (CDN) ข้อมูลปั๊มฝังในไฟล์ เปิดด้วยเบราว์เซอร์ได้เลย
 
-ฟีเจอร์หลัก:
-- ป้อน Duty Point (flow, head, NPSHa ฯลฯ) → เลือกรุ่น → ปรับกราฟ → เลือก Option → **Datasheet**
-- **เลือกขนาดมอเตอร์ (kW) ได้จาก Dropdown** — ค่าเริ่มต้นเป็น Auto (ขนาดที่แนะนำจาก Max Curve Power) ถ้าเลือก kW เล็กลง (แข่งราคา) จุดบนกราฟที่กำลังเกินมอเตอร์จะแสดงเป็น**เส้นประแดง** + เส้นระดับ kW บน Power panel
-- Datasheet พร้อม **Assembly Drawing แนบอัตโนมัติ** (ดูหัวข้อด้านล่าง)
-- Export Datasheet เป็น PDF (ปุ่ม Print) หรือ HTML (ปุ่ม Save HTML)
+**เวอร์ชัน Complete:** ครอบคลุมทุกรุ่นทุกรอบจากแคตตาล็อก manufacturer (1,461 รุ่น / 28 series)
+ใช้ **curve จริงของทุกขนาดใบพัด + interpolation ระหว่างใบพัด** — ไม่ใช้ Affinity Law
+(รุ่นก่อนหน้าใช้ Affinity ในการ trim ใบพัด ซึ่งค่าจริงไม่เป็นไปตามนั้น)
+
+## ฟีเจอร์หลัก
+
+- ป้อน Duty Point (flow L/s, head, tolerance ฯลฯ) → ค้นหาปั๊มที่ครอบคลุม duty (interpolate ระหว่างใบพัด)
+- แสดง **curve จริงของทุกใบพัด** (5-6 เส้นต่อรุ่น) + **curve ที่ interpolate ตาม duty** (เส้นหนา)
+- รองรับปั๊ม 3 ประเภท: ใบพัดปรับได้ (EA/EAZ/EH/ES/EGM → หาเส้นผ่านศูนย์กลาง), ใบพัดตรึง (EJ → หาความเร็วรอบ), curve เดียว (FDL/FTD)
+- **Dropdown เลือกขนาดมอเตอร์ (kW)** — ค่าเริ่มต้น Auto = ขนาดที่แนะนำจากกำลังสูงสุดของ curve
+  ถ้าเลือก kW เล็กลง จุดกราฟที่กำลังเกินมอเตอร์ = **เส้นประแดง** + เส้นระดับ kW
+- VSD curve preview (ความเร็วรอบรองของแต่ละรุ่น)
+- ค่า Eff/Power/NPSHr @ duty จากข้อมูลจริง + ค่าไฟฟ้า IE1-4
+- Datasheet พร้อม Assembly Drawing (1,351/1,461 รุ่น) + Export HTML / Print PDF
+- โลโก้ FlowCore + บริษัท Siamraj Public Company Limited.
 
 ## วิธีใช้งาน
 
 เปิด `index.html` ด้วยเบราว์เซอร์ (Chrome/Edge แนะนำ)
 
-> ⚠️ ต้องเปิดจากที่อยู่เดียวกับโฟลเดอร์ `* Drawing/` ถึงจะเห็นรูป Assembly Drawing
-> (โปรแกรมอ้างอิงรูปด้วย relative path)
+> ⚠️ ต้องเปิดจากที่อยู่เดียวกับโฟลเดอร์ `Pump Drawing/` ถึงจะเห็นรูป Assembly Drawing
 
 ### Host ขึ้นเว็บ (GitHub Pages / เว็บเซิร์ฟเวอร์)
 
-ต้องอัปโหลดไฟล์และโฟลเดอร์ทั้งหมดด้วยกัน:
+อัปโหลดไฟล์และโฟลเดอร์ทั้งหมดด้วยกัน:
 
 ```
 FlowCore-Selection-Program/
 ├── index.html
-├── EA Drawing/
-├── EAZ Drawing/
-├── EJ Drawing/
-└── ES Drawing/
+├── Pump Drawing/      # รูป Assembly Drawing (1,357 ไฟล์)
+└── db/
+    └── db_v2.json     # ฐานข้อมูล (สำหรับ rebuild)
 ```
 
-## โครงสร้าง
+## โครงสร้างข้อมูล (db/db_v2.json)
 
+```json
+{
+  "companyLogo": "data:image/png;base64,...",      // โลโก้ FlowCore
+  "modelGroups": [
+    {
+      "id": "S2", "seriesId": 2, "modelName": "EA (1450 rpm)",
+      "materials": [{ "code": "CBSM", "impeller": "...", "casing": "...", ... }],
+      "seals": [{ "type": "Mechanical Seal", "material": "Carbon/SiC/Viton" }],
+      "connections": ["GB/T17241.6 PN16"],
+      "sizes": [
+        {
+          "size": "EA32/13", "displayName": "EA32-13", "pumpId": 1,
+          "speed": 1450, "freq": 50, "maxDia": 139, "minDia": 100,
+          "variantType": "dia",          // dia | speed | none
+          "allow": { "minQ": 2.7, "maxQ": 10.8 },
+          "bep": { "q": 8.36, "e": 61.6 },
+          "vsdSpeeds": [1305, 1160, ...],
+          "diaCurves": [
+            { "dia": 139, "qh": [[Q,H],...], "qe": [[Q,E]], "qp": [[Q,P]], "npsh": [[Q,NPSH]] },
+            { "dia": 130, "qh": [...], "qe": [...], "qp": [...] }, ...
+          ],
+          "drawing": "Pump Drawing/2_EA32-13.png"
+        }
+      ]
+    }
+  ]
+}
 ```
-├── index.html                     # ตัวโปรแกรม (ไฟล์เดียวจบ)
-├── EA Drawing/                    # รูป Assembly Drawing รุ่น EA (มี 2900/, 1450/, Bare Pump/)
-├── EAZ Drawing/                   # รุ่น EAZ
-├── EJ Drawing/                    # รุ่น EJ
-├── ES Drawing/                    # รุ่น ES (มี 2900/, 1450/, Bare Pump/)
-├── db/
-│   └── flowcore_db.json           # ฐานข้อมูลอ้างอิง (ตัวโปรแกรมฝัง DB ไว้แล้ว)
-└── scripts/
-    └── build_drawing_index.py     # สคริปต์สร้าง DRAWING_INDEX จากโฟลเดอร์รูป
-```
 
-## ระบบแนบ Assembly Drawing
-
-- โปรแกรมมี `DRAWING_INDEX` ฝังใน `index.html` — map **รุ่นปั๊ม → path รูป** (สร้างอัตโนมัติจากโฟลเดอร์รูป)
-- Datasheet แสดง section **"6. Assembly Drawing"** ขึ้นหน้า A4 ใหม่ (แยกจากตาราง/กราฟ)
-- กติกาการจับคู่รุ่นกับรูป:
-  - EA/EAZ: size ในโปรแกรมใช้ `/` (เช่น `EA250/40`) ↔ ชื่อไฟล์ใช้ `_` (`EA250_40_Assembly Drawing.png`)
-  - EJ/ES: ใช้ `-` เหมือนกันทั้งสองฝั่ง (เช่น `ES125-230`)
-  - ไฟล์ที่ลงท้าย `2900` / `1450` = รูปสำหรับความเร็วรอบนั้น (เลือกตาม RPM ที่เลือกในโปรแกรม)
-  - ชอบรูป `(unit)` (ชุดมีมอเตอร์) ก่อนรูปตัวเปล่า
-  - รุ่นที่ลงท้าย N/G/H/A ถ้าหารูปตรงตัวไม่ได้ → fallback ใช้รูปตัว base (เช่น `ES125-230N` → รูป `ES125-230`)
-  - **รุ่นที่ไม่มีรูป → ซ่อน section อัตโนมัติ** (ไม่โชว์กล่องว่าง)
-
-### เพิ่ม/แก้ไขรูป Drawing
-
-1. วาง PNG ลงในโฟลเดอร์ตามรุ่น (ตั้งชื่อตามกติกาด้านบน)
-2. รันเพื่อ rebuild index:
-
-   ```bash
-   python3 scripts/build_drawing_index.py
-   ```
-
-   (ใช้ `--dry-run` เพื่อดูผลลัพธ์ก่อน inject)
+- **Flow หน่วย L/s** (×3.6 = m³/h)
+- `variantType`: `dia` = ใบพัดปรับได้ (ค่า curve = mm) · `speed` = ใบพัดตรึง (ค่า curve = rpm เช่น EJ)
+  · `none` = curve เดียว (FDL/FTD)
+- `allow` = ช่วง Flow ที่วิ่งได้ (Allowable Region จาก manufacturer)
+- E/P ของใบพัดกลาง = **ค่าจริง** (ไม่ประมาณ) — NPSH มีเฉพาะใบพัด max/min
 
 ## หมายเหตุ
 
-- ไฟล์เวอร์ชันเก่า, ไฟล์ PDF ขนาดใหญ่ (เช่น E-Catalog ~60MB), และไฟล์ทำงานอื่น ๆ **ไม่ได้อยู่ใน repo นี้**
-  (GitHub จำกัดไฟล์ใหญ่สุด 100MB — ถ้าอยากเก็บ PDF ใช้ [Git LFS](https://git-lfs.com/) หรือ GitHub Releases แทน)
-- รูป PNG บางไฟล์ใหญ่ (~7MB) ถ้าอยากให้เว็บโหลดเร็วขึ้น แนะนำบีบอัด/ลดขนาดรูปก่อนอัปโหลด
-- ข้อมูลบริษัท/โลโก้อยู่ใน `companyLogo` ฝังใน DB ในตัวไฟล์ (แก้ใน Management Flow ของโปรแกรม)
+- series EA(1450)/EA(2900) ฯลฯ ที่ซ้ำ (DT3 #2) = รุ่น drive type ต่างกัน ข้อมูลคนละชุด
+- FDL/FTD (ปั๊มหลายชั้น/ท่อ) ไม่มีใบพัดปรับ — จับคู่ duty แบบ curve เดียว ± tolerance
+- บางรุ่น (EAZ 1750/2900 rpm บางตัว) ไม่มีรูปในแคตตาล็อก — Datasheet ซ่อน section อัตโนมัติ
+- สคริปต์สกัดข้อมูล: `/EIFEL-Extraction/` (phase1-7) ใช้ rebuild DB จากแคตตาล็อก manufacturer
