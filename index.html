@@ -31,6 +31,16 @@ const DB = loadDb();
 const TO_LS = (v, unit) => (unit === 'm³/h' ? (parseFloat(v) || 0) / 3.6 : (parseFloat(v) || 0));
 const FROM_LS = (v, unit) => (unit === 'm³/h' ? (v || 0) * 3.6 : (v || 0));
 const OTHER_UNIT = u => (u === 'm³/h' ? 'L/s' : 'm³/h');
+/* จัดหมวด 50/60 Hz ตามความเร็วรอบจริง (MotorFrequece ของเว็บไม่น่าเชื่อถือ: DT3=0, EJ=50 ทั้งที่รอบ 3500) */
+function groupFreq(g) {
+  const spd = Math.abs(+((g.sizes || [])[0] || {}).speed || 0);
+  if (spd >= 3300) return 60;   // 3500/3580
+  if (spd >= 2700) return 50;   // 2900/2950/2980
+  if (spd >= 1650) return 60;   // 1750/1780
+  if (spd >= 1300) return 50;   // 1450/1480
+  if (spd >= 1100) return 60;   // 1180
+  return 50;                    // 980 และอื่นๆ
+}
 
 /* ================= Helpers ================= */
 const IEC_MOTORS = [0.37, 0.55, 0.75, 1.1, 1.5, 2.2, 3, 4, 5.5, 7.5, 11, 15, 18.5, 22, 30, 37, 45, 55, 75, 90, 110, 132, 160, 200, 250, 315, 355, 400, 450, 500];
@@ -234,7 +244,7 @@ const STEP_NAMES = ['Duty Input', 'Select Model', 'Adjust Curve', 'Options', 'Da
 
 function SelectionFlow({ db }) {
   const [step, setStep] = useState(0);
-  const [duty, setDuty] = useState({ pumpTag: '', application: '', groups: [], speed: '', tolerance: '1.1', flow: '', head: '', flowUnit: 'm³/h', density: '1000', viscosity: '1', elecRate: '4.5', npsha: '' });
+  const [duty, setDuty] = useState({ pumpTag: '', application: '', groups: [], freq: 'all', speed: '', tolerance: '1.1', flow: '', head: '', flowUnit: 'm³/h', density: '1000', viscosity: '1', elecRate: '4.5', npsha: '' });
   const [cands, setCands] = useState([]);
   const [selGroup, setSelGroup] = useState(null);
   const [selSize, setSelSize] = useState(null);
@@ -248,7 +258,8 @@ function SelectionFlow({ db }) {
   const doSearch = () => {
     if (!(q > 0) || !(h > 0)) return;
     const tol = parseFloat(duty.tolerance) || 1.1;
-    const list = groupPumpsForDuty(groups, q, h, tol, duty.groups || []);
+    const pool = (duty.freq && duty.freq !== 'all') ? groups.filter(g => groupFreq(g) === +duty.freq) : groups;
+    const list = groupPumpsForDuty(pool, q, h, tol, duty.groups || []);
     setCands(list);
     setStep(1);
   };
@@ -287,10 +298,14 @@ function SelectionFlow({ db }) {
 function DutyStep({ duty, setDuty, groups, doSearch }) {
   const set = (k, v) => setDuty(p => ({ ...p, [k]: v }));
   const selGroups = duty.groups || [];
+  const selFreq = duty.freq || 'all';
+  const visGroups = selFreq === 'all' ? groups : groups.filter(g => groupFreq(g) === +selFreq);
+  const setFreq = v => setDuty(p => ({ ...p, freq: v, groups: (p.groups || []).filter(id => { const g = groups.find(x => x.id === id); return v === 'all' || (g && groupFreq(g) === +v); }) }));
   const toggleGroup = id => set('groups', selGroups.includes(id) ? selGroups.filter(x => x !== id) : [...selGroups, id]);
   const selModels = selGroups.reduce((n, id) => n + (groups.find(g => g.id === id) || { sizes: [] }).sizes.length, 0);
+  const visModels = visGroups.reduce((n, g) => n + g.sizes.length, 0);
   const allRef = React.useRef(null);
-  const allChecked = groups.length > 0 && selGroups.length === groups.length;
+  const allChecked = visGroups.length > 0 && selGroups.length === visGroups.length;
   const partial = selGroups.length > 0 && !allChecked;
   React.useEffect(() => { if (allRef.current) allRef.current.indeterminate = partial; }, [partial, selGroups.length]);
   return (
@@ -304,15 +319,24 @@ function DutyStep({ duty, setDuty, groups, doSearch }) {
             <label className="text-sm mb-1 font-medium text-slate-600">Series / Models to include on Step 2 (optional — tick to filter)</label>
             {selGroups.length > 0 && <button type="button" onClick={() => set('groups', [])} className="text-[11px] px-2 py-0.5 rounded border border-slate-300 text-slate-500 hover:bg-slate-50 font-semibold">Clear ({selGroups.length})</button>}
           </div>
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <span className="text-xs font-medium text-slate-500">Motor Frequency:</span>
+            {['all', '50', '60'].map(f => (
+              <button key={f} type="button" onClick={() => setFreq(f)} className={`px-3 py-1 rounded-full text-xs font-bold border transition ${selFreq === f ? (f === 'all' ? 'bg-slate-700 text-white border-slate-700' : 'bg-blue-600 text-white border-blue-600') : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
+                {f === 'all' ? 'All' : f + ' Hz'}
+              </button>
+            ))}
+            <span className="text-[11px] text-slate-400">กรองผลลัพธ์หน้า 2 ให้เหลือเฉพาะ series ความถี่นี้</span>
+          </div>
           <div className="border rounded">
             <label className="flex items-center gap-2 px-2 py-1.5 cursor-pointer bg-slate-100/80 border-b border-slate-200 select-none">
-              <input ref={allRef} type="checkbox" className="accent-blue-600 w-4 h-4" checked={allChecked} onChange={e => set('groups', e.target.checked ? groups.map(g => g.id) : [])} />
-              <span className="font-bold text-sm text-slate-800">All Series</span>
-              <span className="text-slate-400 text-[11px]">({groups.length} series · {groups.reduce((n, g) => n + g.sizes.length, 0).toLocaleString()} models)</span>
+              <input ref={allRef} type="checkbox" className="accent-blue-600 w-4 h-4" checked={allChecked} onChange={e => set('groups', e.target.checked ? visGroups.map(g => g.id) : [])} />
+              <span className="font-bold text-sm text-slate-800">All {selFreq !== 'all' ? selFreq + ' Hz ' : ''}Series</span>
+              <span className="text-slate-400 text-[11px]">({visGroups.length} series · {visModels.toLocaleString()} models)</span>
               {partial && <span className="ml-auto text-[11px] font-bold text-amber-600">{selGroups.length} selected</span>}
             </label>
             <div className="p-1.5 max-h-44 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
-              {groups.map(g => {
+              {visGroups.map(g => {
                 const on = selGroups.includes(g.id);
                 return (
                   <label key={g.id} className={`flex items-center gap-2 text-sm cursor-pointer rounded px-1 py-0.5 hover:bg-blue-50 ${on ? 'bg-blue-50/60' : ''}`}>
@@ -325,7 +349,10 @@ function DutyStep({ duty, setDuty, groups, doSearch }) {
               })}
             </div>
           </div>
-          <p className="text-[11px] mt-1 text-slate-400">{selGroups.length ? `✔ หน้า 2 จะแสดงเฉพาะรุ่นจาก ${selGroups.length} series ที่ tick (${selModels.toLocaleString()} models)` : 'ไม่ tick = หน้า 2 แสดงทุก series (1,461 models)'}</p>
+          <p className="text-[11px] mt-1 text-slate-400">
+            {selFreq !== 'all' && `${selGroups.length === 0 ? `กรองเฉพาะ series ไฟ ${selFreq} Hz (${visGroups.length} series · ${visModels.toLocaleString()} models)` : ''}`}
+            {selGroups.length > 0 ? `${selFreq !== 'all' ? '✔' : '✔'} tick ${selGroups.length} series (${selModels.toLocaleString()} models)` : (selFreq === 'all' ? 'ไม่ tick = หน้า 2 แสดงทุก series (1,461 models)' : '')}
+          </p>
         </div>
         <div><label className="block text-sm mb-1 font-medium text-slate-600">Flow Rate *</label>
           <div className="flex gap-1">
