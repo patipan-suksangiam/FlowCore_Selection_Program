@@ -476,7 +476,7 @@ function CurveStep({ group, size, q, h, motorKw, setMotorKw, next, back, duty })
               <div className="flex justify-between"><span className="text-slate-500">Est. Efficiency:</span><b className="text-emerald-600">{eff !== null ? eff.toFixed(1) + ' %' : '-'}</b></div>
               <div className="flex justify-between"><span className="text-slate-500">Est. Power Req.:</span><b>{pwr !== null ? pwr.toFixed(3) + ' kW' : '-'}</b></div>
               <div className="flex justify-between"><span className="text-slate-500">Est. NPSHr:</span><b className="text-orange-500">{npshr !== null ? npshr.toFixed(2) + ' m' : '-'}</b></div>
-              {size.allow && size.allow.maxQ != null && <div className="flex justify-between text-xs"><span className="text-slate-400">Allow Q range:</span><b className="text-slate-500">{size.allow.minQ}–{size.allow.maxQ} L/s</b></div>}
+              {size.allow && size.allow.maxQ != null && <div className="flex justify-between text-xs"><span className="text-slate-400">Allow Q range:</span><b className="text-slate-500">{(size.allow.minQ * 3.6).toFixed(1)}–{(size.allow.maxQ * 3.6).toFixed(1)} m³/h</b></div>}
             </div>
           </div>
 
@@ -529,7 +529,8 @@ function PumpChart({ size, curves, sel, flow, head, eff, pwr, npshr, effMotor, s
   if (sel) sel.qh.forEach(p => allPts.push({ q: p[0], h: p[1] }));
   if (!allPts.length) return <div className="text-slate-400 text-center py-20">No curve data</div>;
 
-  const maxFlow = Math.max(...allPts.map(p => p.q)) * 1.05 || 10;
+  const maxFlowLs = Math.max(...allPts.map(p => p.q)) * 1.05 || 10;
+  const maxFlow = maxFlowLs * 3.6; // axis in m3/h
   const maxHead = Math.max(...allPts.map(p => p.h)) * 1.12 || 10;
   const minHead = Math.min(0, ...allPts.map(p => p.h));
   const headRange = maxHead - minHead || 1;
@@ -543,7 +544,7 @@ function PumpChart({ size, curves, sel, flow, head, eff, pwr, npshr, effMotor, s
   const npshH = 55, npshBot = 535;
   const bottomY = hasNpsh ? npshBot : powBot;
   const W = 620;
-  const toX = q => 64 + (q / maxFlow) * (W - 96);
+  const toX = q => 64 + ((q * 3.6) / maxFlow) * (W - 96);
   const toYH = h => headBot - ((h - minHead) / headRange) * headH;
   const toYE = e => effBot - (e / maxEff) * effH;
   const toYP = p => powBot - (p / maxPow) * powH;
@@ -605,7 +606,7 @@ function PumpChart({ size, curves, sel, flow, head, eff, pwr, npshr, effMotor, s
         <line x1="64" y1="25" x2={W - 32} y2="25" stroke="#334155" strokeWidth="1.5" />
         <line x1="64" y1="25" x2="64" y2={bottomY} stroke="#334155" strokeWidth="1.5" />
         <line x1={W - 32} y1="25" x2={W - 32} y2={bottomY} stroke="#334155" strokeWidth="1.5" />
-        <text x={(W + 32) / 2} y={bottomY + 26} textAnchor="middle" fontWeight="bold" fill="#334155">Flow (L/s)</text>
+        <text x={(W + 32) / 2} y={bottomY + 26} textAnchor="middle" fontWeight="bold" fill="#334155">Flow (m³/h)</text>
         <text x="12" y={headBot - headH / 2} textAnchor="middle" transform={`rotate(-90 12 ${headBot - headH / 2})`} fontWeight="bold" fill="#2563eb">Head (m)</text>
         <text x="12" y={effBot - effH / 2} textAnchor="middle" transform={`rotate(-90 12 ${effBot - effH / 2})`} fontWeight="bold" fill="#22c55e">Eff (%)</text>
         {hasPower && <text x="12" y={powBot - powH / 2} textAnchor="middle" transform={`rotate(-90 12 ${powBot - powH / 2})`} fontWeight="bold" fill="#8b5cf6">Power (kW)</text>}
@@ -681,7 +682,7 @@ function PumpChart({ size, curves, sel, flow, head, eff, pwr, npshr, effMotor, s
             <line x1={toX(flow)} y1="25" x2={toX(flow)} y2={toYH(head)} stroke={C_RED} strokeDasharray="3 3" opacity="0.6" />
             <line x1="64" y1={toYH(head)} x2={toX(flow)} y2={toYH(head)} stroke={C_RED} strokeDasharray="3 3" opacity="0.6" />
             <circle cx={toX(flow)} cy={toYH(head)} r="4.5" fill={C_RED} stroke="#fff" strokeWidth="1.5" />
-            <text x={toX(flow) + 7} y={toYH(head) - 6} fill={C_RED} fontWeight="bold" className="text-[9px]">{flow} L/s @ {head} m</text>
+            <text x={toX(flow) + 7} y={toYH(head) - 6} fill={C_RED} fontWeight="bold" className="text-[9px]">{(flow * 3.6).toFixed(1)} m³/h @ {head} m</text>
             {eff !== null && eff > 0 && <circle cx={toX(flow)} cy={toYE(clamp(eff, 0, 100))} r="3.5" fill={C_RED} />}
             {pwr !== null && pwr > 0 && <circle cx={toX(flow)} cy={toYP(pwr)} r="3.5" fill={C_RED} />}
             {npshr !== null && npshr > 0 && hasNpsh && <circle cx={toX(flow)} cy={toYN(npshr)} r="3.5" fill={C_RED} />}
@@ -819,7 +820,7 @@ function DatasheetStep({ db, group, size, duty, motorKw, opts }) {
               <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Eff. / NPSHr @ Duty</td><td className="font-semibold text-right"><span className="text-emerald-600">{eff !== null ? eff.toFixed(1) + '%' : '-'}</span> / <span className="text-orange-500">{npshr !== null ? npshr.toFixed(2) + ' m' : '-'}</span></td></tr>
               <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Power Consump.</td><td className="font-semibold text-right">{pwr !== null ? pwr.toFixed(3) + ' kW' : '-'}</td></tr>
               <tr className="border-b border-slate-100"><td className="py-0.5 text-emerald-700 font-bold">Motor Size</td><td className="font-bold text-right text-emerald-700">{motorShow ? motorShow + ' kW' : '-'}</td></tr>
-              {size.allow && size.allow.maxQ != null && <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Allowable Q Range</td><td className="font-semibold text-right">{size.allow.minQ} – {size.allow.maxQ} L/s</td></tr>}
+              {size.allow && size.allow.maxQ != null && <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Allowable Q Range</td><td className="font-semibold text-right">{(size.allow.minQ * 3.6).toFixed(1)} – {(size.allow.maxQ * 3.6).toFixed(1)} m³/h</td></tr>}
             </tbody></table>
           </div>
           <div>
