@@ -475,11 +475,13 @@ function CurveStep({ group, size, q, h, motorKw, setMotorKw, next, back, duty })
   const effMotor = motorKw && parseFloat(motorKw) > 0 ? parseFloat(motorKw) : recMotor;
 
   const rate = parseFloat(duty.elecRate) || 0;
+  /* IE class motor efficiency (%): class gap kept visible at all ratings */
   const motorEffApprox = (kw, cls) => {
     const p = Math.max(0.75, kw);
     const lp = Math.log10(p);
-    const m = { IE1: 76 + 8.5 * lp, IE2: 80 + 7 * lp, IE3: 83.5 + 6 * lp, IE4: 86 + 5 * lp };
-    return Math.min(97.5, Math.max(50, m[cls]));
+    const m = { IE1: 72.5 + 9 * lp, IE2: 77 + 8.5 * lp, IE3: 82.5 + 8 * lp, IE4: 87.5 + 7.5 * lp };
+    const cap = { IE1: 96, IE2: 96.5, IE3: 97, IE4: 97.5 };
+    return Math.min(cap[cls], Math.max(45, m[cls]));
   };
   const costs = {};
   ['IE1', 'IE2', 'IE3', 'IE4'].forEach(c => {
@@ -629,13 +631,23 @@ function PumpChart({ size, curves, sel, flow, head, eff, pwr, npshr, effMotor, s
 
   const toHeadPts = pts => pts.map(p => ({ x: toX(p[0]), y: toYH(p[1]) })).filter(p => p.y >= 20 && p.y <= headBot);
   const toXY = (q, v, fn) => { const y = fn(v); return (y !== null && y >= 20) ? { x: toX(q), y } : null; };
+  /* x-axis ticks: round steps (1/2/5 x 10^n, min 1) — integer labels, no decimals */
+  const toXM = qm => 64 + (qm / maxFlow) * (W - 96);
+  let xStep = 1;
+  const rawStep = maxFlow / 5;
+  if (rawStep > 1) {
+    const pw = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    xStep = [1, 2, 5, 10].map(m => m * pw).find(c => c >= rawStep) || pw * 10;
+  }
+  const xTicks = [];
+  for (let v = 0; v <= maxFlow + 1e-9; v += xStep) xTicks.push(v);
 
   return (
     <div className="relative border rounded bg-white shadow-inner mx-auto w-full max-w-[640px]">
       <svg viewBox={`0 0 ${W} ${bottomY + 30}`} className="w-full h-auto text-[9px] font-sans">
         {/* grids */}
-        {[0, 0.25, 0.5, 0.75, 1].map(r => { const v = maxFlow * r; return (
-          <g key={'gx' + r}><line x1={toX(v)} y1="25" x2={toX(v)} y2={bottomY} stroke="#f1f5f9" /><text x={toX(v)} y={bottomY + 13} textAnchor="middle" fill="#94a3b8">{v.toFixed(0)}</text></g>); })}
+        {xTicks.map(v => { const x = toXM(v); return (
+          <g key={'gx' + v}><line x1={x} y1="25" x2={x} y2={bottomY} stroke="#f1f5f9" /><text x={x} y={bottomY + 13} textAnchor="middle" fill="#94a3b8">{v}</text></g>); })}
         {[0, 0.25, 0.5, 0.75, 1].map(r => { const v = minHead + headRange * r; const y = toYH(v); return (
           <g key={'gy' + r}><line x1="64" y1={y} x2={W - 32} y2={y} stroke="#f1f5f9" /><text x="60" y={y + 3} textAnchor="end" fill="#94a3b8">{v.toFixed(0)}</text></g>); })}
         {[0, 0.5, 1].map(r => { const y = toYE(maxEff * r); return (<g key={'ge' + r}><line x1="64" y1={y} x2={W - 32} y2={y} stroke="#f1f5f9" /><text x="60" y={y + 3} textAnchor="end" fill="#22c55e">{Math.round(maxEff * r)}</text></g>); })}
