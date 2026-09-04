@@ -52,11 +52,12 @@ const getRecMotor = (kw) => {
 };
 const lin = (a, b, t) => a + (b - a) * t;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-function interpXY(arr, x) {
+function interpXY(arr, x, clampLo) {
   if (!arr || arr.length === 0) return null;
   const a = arr.filter(p => p && p[0] !== null && p[1] !== null && !isNaN(p[0]) && !isNaN(p[1]));
   if (!a.length) return null;
-  if (x < a[0][0] - 1e-9 || x > a[a.length - 1][0] + 1e-9) return null; // no extrapolation beyond curve
+  if (x < a[0][0] - 1e-9) return clampLo ? a[0][1] : null; // no extrapolation; NPSH may clamp low side (curve starts above q=0)
+  if (x > a[a.length - 1][0] + 1e-9) return null;
   if (x <= a[0][0]) return a[0][1];
   if (x >= a[a.length - 1][0]) return a[a.length - 1][1];
   for (let i = 0; i < a.length - 1; i++) {
@@ -90,7 +91,10 @@ function normCurves(sz) {
 const hAt = (c, q) => interpXY(c.qh, q);
 const eAt = (c, q) => { const v = interpXY(c.qe, q); return v === null ? null : v; };
 const pAt = (c, q) => { const v = interpXY(c.qp, q); return v === null ? null : v; };
-const nAt = (c, q) => { const v = interpXY(c.npsh, q); return v === null ? null : v; };
+/* NPSH: manufacturers often publish the curve starting above q=0 — clamp the low side */
+const nAt = (c, q) => interpXY(c && c.npsh, q, true);
+/* pump-level NPSH reference = widest published NPSH curve (usually the max-dia one) */
+const npshRefOf = curves => { for (let i = (curves || []).length - 1; i >= 0; i--) { if (curves[i].npsh && curves[i].npsh.length) return curves[i].npsh; } return null; };
 
 /* find bracketing pair of curves by duty (q,H). Returns {A, B, t, vReq, ok} */
 function findPair(curves, q, H, tol) {
@@ -124,9 +128,9 @@ function findPair(curves, q, H, tol) {
 }
 
 /* build the selected (interpolated) curve points index-aligned between A and B */
-function buildSelCurve(A, B, t) {
+function buildSelCurve(A, B, t, npshRef) {
   if (A === B) {
-    return { qh: A.qh.map(p => [p[0], p[1]]), qe: A.qe || [], qp: A.qp || [], npsh: A.npsh || [], qEnd: curveEndQ(A), A, B: A };
+    return { qh: A.qh.map(p => [p[0], p[1]]), qe: A.qe || [], qp: A.qp || [], npsh: A.npsh || [], qEnd: curveEndQ(A), A, B: A, npshRef };
   }
   const n = Math.min(A.qh.length, B.qh.length);
   const qh = [];
@@ -134,18 +138,21 @@ function buildSelCurve(A, B, t) {
     qh.push([lin(A.qh[i][0], B.qh[i][0], t), lin(A.qh[i][1], B.qh[i][1], t)]);
   }
   const qEnd = qh.length ? qh[qh.length - 1][0] : null;
-  return { qh, qe: A.qe, qp: A.qp, npsh: A.npsh, A, B, t, qEnd };
+  return { qh, qe: A.qe, qp: A.qp, npsh: A.npsh, A, B, t, qEnd, npshRef };
 }
 /* eff/power/npsh of interpolated curve at flow q */
 function selVal(sel, q, key) {
+  const refVal = () => (sel.npshRef && sel.npshRef.length ? interpXY(sel.npshRef, q, true) : null);
   if (sel.A === sel.B || !sel.B) {
     const c = sel.A || sel.B;
     if (!c) return null;
-    return key === 'e' ? eAt(c, q) : key === 'p' ? pAt(c, q) : nAt(c, q);
+    let v = key === 'e' ? eAt(c, q) : key === 'p' ? pAt(c, q) : nAt(c, q);
+    if (v === null && key === 'n') v = refVal();
+    return v;
   }
   const va = (key === 'e' ? eAt(sel.A, q) : key === 'p' ? pAt(sel.A, q) : nAt(sel.A, q));
   const vb = (key === 'e' ? eAt(sel.B, q) : key === 'p' ? pAt(sel.B, q) : nAt(sel.B, q));
-  if (va === null && vb === null) return null;
+  if (va === null && vb === null) return key === 'n' ? refVal() : null;
   if (va === null) return vb;
   if (vb === null) return va;
   return lin(va, vb, sel.t);
@@ -155,9 +162,12 @@ function selVal(sel, q, key) {
 function evaluatePump(sz, q, H, tol) {
   const curves = normCurves(sz);
   if (!curves.length) return null;
+  // manufacturer allowable operating range (per-pump allow window, stored in L/s)
+  const al = sz.allow;
+  if (al && al.minQ != null && (q < al.minQ - 1e-9 || q > al.maxQ + 1e-9)) return null;
   const pair = findPair(curves, q, H, tol || 1.1);
   if (!pair.ok) return null;
-  const sel = buildSelCurve(pair.A, pair.B, pair.t);
+  const sel = buildSelCurve(pair.A, pair.B, pair.t, npshRefOf(curves));
   const eff = selVal(sel, q, 'e');
   const pwr = selVal(sel, q, 'p');
   const npsh = selVal(sel, q, 'n');
@@ -448,7 +458,7 @@ function CurveStep({ group, size, q, h, motorKw, setMotorKw, next, back, duty })
   const qN = TO_LS(flow, unit), hN = parseFloat(head);
   const curves = useMemo(() => normCurves(size), [size]);
   const pair = (qN > 0 && hN > 0) ? findPair(curves, qN, hN, parseFloat(duty.tolerance) || 1.1) : null;
-  const sel = pair && pair.ok ? buildSelCurve(pair.A, pair.B, pair.t) : null;
+  const sel = pair && pair.ok ? buildSelCurve(pair.A, pair.B, pair.t, npshRefOf(curves)) : null;
   const eff = sel && qN > 0 ? selVal(sel, qN, 'e') : null;
   const pwr = sel && qN > 0 ? selVal(sel, qN, 'p') : null;
   const npshr = sel && qN > 0 ? selVal(sel, qN, 'n') : null;
@@ -790,7 +800,7 @@ function DatasheetStep({ db, group, size, duty, motorKw, opts }) {
   const dUnit = duty.flowUnit || 'L/s';
   const qN = TO_LS(duty.flow, dUnit), hN = parseFloat(duty.head);
   const pair = findPair(curves, qN, hN, parseFloat(duty.tolerance) || 1.1);
-  const sel = pair.ok ? buildSelCurve(pair.A, pair.B, pair.t) : null;
+  const sel = pair.ok ? buildSelCurve(pair.A, pair.B, pair.t, npshRefOf(curves)) : null;
   const eff = sel ? selVal(sel, qN, 'e') : null;
   const pwr = sel ? selVal(sel, qN, 'p') : null;
   const npshr = sel ? selVal(sel, qN, 'n') : null;
