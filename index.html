@@ -92,21 +92,23 @@ function findPair(curves, q, H, tol) {
     return { A: curves[0], B: curves[0], t: 0, vReq: curves[0].v, ok, h: h };
   }
   const lo = curves[0], hi = curves[curves.length - 1];
-  const hLo = hAt(lo, q), hHi = hAt(hi, q);
-  if (hLo === null || hHi === null) return { ok: false };
-  // duty above max curve -> no (unless near, treat with clamp? no)
-  if (H > hHi) return { ok: false, above: true };
-  if (H < hLo) return { ok: false, below: true };
+  const hHi = hAt(hi, q);
+  if (hHi === null) return { ok: false }; // flow beyond largest curve
+  // pair bracket: duty H between two adjacent real curves at q
   for (let i = 0; i < curves.length - 1; i++) {
     const A = curves[i], B = curves[i + 1];
     const hA = hAt(A, q), hB = hAt(B, q);
     if (hA === null || hB === null) continue;
     const loH = Math.min(hA, hB), hiH = Math.max(hA, hB);
     if (H >= loH - 1e-9 && H <= hiH + 1e-9) {
-      const t = (hiH === loH) ? 0 : (H - loH) / (hiH - loH);
-      const vReq = lin(A.v, B.v, t);
-      return { A, B, t, vReq, ok: true, hA, hB };
+      const tt = (hiH === loH) ? 0 : (H - loH) / (hiH - loH);
+      const vReq = lin(A.v, B.v, tt);
+      return { A, B, t: tt, vReq, ok: true, hA, hB };
     }
+  }
+  // extremes (runout / full-dia): accept near the largest curve within tolerance
+  if (H >= hHi * (2 - t) - 1e-9 && H <= hHi * t + 1e-9) {
+    return { A: hi, B: hi, t: 0, vReq: hi.v, ok: true, h: hHi };
   }
   return { ok: false };
 }
@@ -149,6 +151,8 @@ function evaluatePump(sz, q, H, tol) {
   const eff = selVal(sel, q, 'e');
   const pwr = selVal(sel, q, 'p');
   const npsh = selVal(sel, q, 'n');
+  // หน้า 2 แสดงเฉพาะรุ่นที่ข้อมูลครบ (Flow/Head/Power/Efficiency/NPSH) — ขาดอย่างใดอย่างหนึ่ง = ใช้ไม่ได้
+  if (eff === null || pwr === null || npsh === null) return null;
   const vReq = (sz.variantType === 'none') ? null : pair.vReq;
   return {
     sz, sel, vReq, eff, pwr, npsh,
