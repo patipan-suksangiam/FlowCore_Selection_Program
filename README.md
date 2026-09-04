@@ -9,7 +9,8 @@
 
 ## ฟีเจอร์หลัก
 
-- ป้อน Duty Point (flow L/s, head, tolerance ฯลฯ) → ค้นหาปั๊มที่ครอบคลุม duty (interpolate ระหว่างใบพัด)
+- ป้อน Duty Point (flow m³/h หรือ L/s, head, tolerance ฯลฯ) → ค้นหาปั๊มที่ครอบคลุม duty (interpolate ระหว่างใบพัด)
+  (default หน่วย flow = m³/h เลือกเป็น L/s ได้; dropdown series แสดงคำอธิบายประเภทปั๊ม)
 - แสดง **curve จริงของทุกใบพัด** (5-6 เส้นต่อรุ่น) + **curve ที่ interpolate ตาม duty** (เส้นหนา)
 - รองรับปั๊ม 3 ประเภท: ใบพัดปรับได้ (EA/EAZ/EH/ES/EGM → หาเส้นผ่านศูนย์กลาง), ใบพัดตรึง (EJ → หาความเร็วรอบ), curve เดียว (FDL/FTD)
 - **Dropdown เลือกขนาดมอเตอร์ (kW)** — ค่าเริ่มต้น Auto = ขนาดที่แนะนำจากกำลังสูงสุดของ curve

@@ -31,6 +31,11 @@ function loadDb() {
 }
 const DB = loadDb();
 
+/* unit helpers: engine always works in L/s */
+const TO_LS = (v, unit) => (unit === 'm³/h' ? (parseFloat(v) || 0) / 3.6 : (parseFloat(v) || 0));
+const FROM_LS = (v, unit) => (unit === 'm³/h' ? (v || 0) * 3.6 : (v || 0));
+const OTHER_UNIT = u => (u === 'm³/h' ? 'L/s' : 'm³/h');
+
 /* ================= Helpers ================= */
 const IEC_MOTORS = [0.37, 0.55, 0.75, 1.1, 1.5, 2.2, 3, 4, 5.5, 7.5, 11, 15, 18.5, 22, 30, 37, 45, 55, 75, 90, 110, 132, 160, 200, 250, 315, 355, 400, 450, 500];
 const getRecMotor = (kw) => {
@@ -225,7 +230,7 @@ const STEP_NAMES = ['Duty Input', 'Select Model', 'Adjust Curve', 'Options', 'Da
 
 function SelectionFlow({ db }) {
   const [step, setStep] = useState(0);
-  const [duty, setDuty] = useState({ pumpTag: '', application: '', group: '', speed: '', tolerance: '1.1', flow: '', head: '', flowUnit: 'L/s', density: '1000', viscosity: '1', elecRate: '4.5', npsha: '' });
+  const [duty, setDuty] = useState({ pumpTag: '', application: '', group: '', speed: '', tolerance: '1.1', flow: '', head: '', flowUnit: 'm³/h', density: '1000', viscosity: '1', elecRate: '4.5', npsha: '' });
   const [cands, setCands] = useState([]);
   const [selGroup, setSelGroup] = useState(null);
   const [selSize, setSelSize] = useState(null);
@@ -233,7 +238,7 @@ function SelectionFlow({ db }) {
   const [motorKw, setMotorKw] = useState('');
 
   const groups = db.modelGroups;
-  const q = parseFloat(duty.flow);
+  const q = TO_LS(duty.flow, duty.flowUnit);
   const h = parseFloat(duty.head);
 
   const doSearch = () => {
@@ -252,7 +257,7 @@ function SelectionFlow({ db }) {
 
   const steps = [
     <DutyStep key="d" duty={duty} setDuty={setDuty} groups={groups} doSearch={doSearch} />,
-    <TableStep key="t" cands={cands} q={q} h={h} handleSelect={handleSelect} back={() => setStep(0)} />,
+    <TableStep key="t" cands={cands} q={q} h={h} unit={duty.flowUnit} handleSelect={handleSelect} back={() => setStep(0)} />,
     <CurveStep key="c" group={selGroup} size={selSize} q={q} h={h} motorKw={motorKw} setMotorKw={setMotorKw}
       next={() => setStep(3)} back={() => setStep(1)} duty={duty} />,
     <OptionsStep key="o" group={selGroup} opts={opts} setOpts={setOpts} next={() => setStep(4)} back={() => setStep(2)} />,
@@ -286,14 +291,14 @@ function DutyStep({ duty, setDuty, groups, doSearch }) {
         <div><label className="block text-sm mb-1 font-medium text-slate-600">Model Series (optional filter)</label>
           <select className="w-full border rounded p-2" value={duty.group} onChange={e => set('group', e.target.value)}>
             <option value="">-- All Series --</option>
-            {groups.map(g => <option key={g.id} value={g.id}>{g.modelName} ({g.sizes.length})</option>)}
+            {groups.map(g => <option key={g.id} value={g.id}>{g.modelName}{g.catalogName ? ' — ' + g.catalogName : ''} ({g.sizes.length} models)</option>)}
           </select>
         </div>
         <div><label className="block text-sm mb-1 font-medium text-slate-600">Flow Rate *</label>
           <div className="flex gap-1">
             <input type="number" step="any" className="flex-1 border rounded p-2 text-blue-700 font-bold" value={duty.flow} onChange={e => set('flow', e.target.value)} />
             <select className="border rounded p-2 bg-slate-50" value={duty.flowUnit} onChange={e => set('flowUnit', e.target.value)}>
-              <option>L/s</option><option>m³/h</option>
+              <option>m³/h</option><option>L/s</option>
             </select>
           </div>
         </div>
@@ -308,7 +313,7 @@ function DutyStep({ duty, setDuty, groups, doSearch }) {
         <div><label className="block text-sm mb-1 font-medium text-slate-600">NPSHa (m, optional)</label><input type="number" className="w-full border rounded p-2" value={duty.npsha} onChange={e => set('npsha', e.target.value)} /></div>
         <div><label className="block text-sm mb-1 font-medium text-slate-600">Elec. Rate (฿/kWh)</label><input type="number" step="any" className="w-full border rounded p-2" value={duty.elecRate} onChange={e => set('elecRate', e.target.value)} /></div>
       </div>
-      <p className="text-[11px] text-slate-400 mt-3">* Flow unit L/s (คูณ 3.6 = m³/h) · ค้นหาจาก performance curve จริงของทุกใบพัด (interpolate ระหว่างใบพัด)</p>
+      <p className="text-[11px] text-slate-400 mt-3">* เลือกหน่วย m³/h หรือ L/s (1 m³/h = 0.2778 L/s) · ค้นหาจาก performance curve จริงของทุกใบพัด (interpolate ระหว่างใบพัด)</p>
       <div className="flex justify-end mt-5">
         <button onClick={doSearch} disabled={!(parseFloat(duty.flow) > 0 && parseFloat(duty.head) > 0)} className="bg-blue-600 text-white px-8 py-2.5 rounded-lg font-semibold disabled:bg-slate-300 flex items-center gap-2"><i className="fa-solid fa-magnifying-glass"></i> Find Suitable Pumps</button>
       </div>
@@ -317,14 +322,14 @@ function DutyStep({ duty, setDuty, groups, doSearch }) {
 }
 
 /* ---- Step 2: Table ---- */
-function TableStep({ cands, q, h, handleSelect, back }) {
+function TableStep({ cands, q, h, handleSelect, back, unit }) {
   const [showAll, setShowAll] = useState(40);
   const rows = cands.slice(0, showAll);
   return (
     <div className="bg-white rounded-xl shadow p-6 animate-in fade-in">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <h3 className="text-xl font-semibold border-l-4 border-blue-500 pl-3">Select Suitable Pump Model</h3>
-        <div className="text-sm text-slate-500">{cands.length} matched · Duty {q} L/s @ {h} m</div>
+        <div className="text-sm text-slate-500">{cands.length} matched · Duty {FROM_LS(q, unit)} {unit} @ {h} m</div>
       </div>
       {cands.length === 0 ? (
         <div className="text-center py-16 text-slate-400"><i className="fa-solid fa-circle-exclamation text-4xl mb-3"></i><p>No pump found for this duty — try adjusting flow/head or tolerance.</p></div>
@@ -376,10 +381,11 @@ function TableStep({ cands, q, h, handleSelect, back }) {
 
 /* ---- Step 3: Curve ---- */
 function CurveStep({ group, size, q, h, motorKw, setMotorKw, next, back, duty }) {
-  const [flow, setFlow] = useState(q || '');
+  const unit = duty.flowUnit || 'L/s';
+  const [flow, setFlow] = useState(q ? FROM_LS(q, unit).toFixed(2) : '');
   const [head, setHead] = useState(h || '');
   const [showInverter, setShowInverter] = useState(false);
-  const qN = parseFloat(flow), hN = parseFloat(head);
+  const qN = TO_LS(flow, unit), hN = parseFloat(head);
   const curves = useMemo(() => normCurves(size), [size]);
   const pair = (qN > 0 && hN > 0) ? findPair(curves, qN, hN) : null;
   const sel = pair && pair.ok ? buildSelCurve(pair.A, pair.B, pair.t) : null;
@@ -429,7 +435,7 @@ function CurveStep({ group, size, q, h, motorKw, setMotorKw, next, back, duty })
           <div className="bg-slate-50 border rounded-lg p-4">
             <h4 className="font-semibold text-slate-700 mb-3 border-b pb-2">Duty Point</h4>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-xs mb-1 text-slate-500">Flow (L/s)</label>
+              <div><label className="block text-xs mb-1 text-slate-500">Flow ({unit})</label>
                 <input type="number" step="any" className="w-full border rounded p-2 text-blue-700 font-bold bg-white" value={flow} onChange={e => setFlow(e.target.value)} /></div>
               <div><label className="block text-xs mb-1 text-slate-500">Head (m)</label>
                 <input type="number" step="any" className="w-full border rounded p-2 text-emerald-700 font-bold bg-white" value={head} onChange={e => setHead(e.target.value)} /></div>
@@ -720,7 +726,8 @@ function OptionsStep({ group, opts, setOpts, next, back }) {
 /* ---- Step 5: Datasheet ---- */
 function DatasheetStep({ db, group, size, duty, motorKw, opts }) {
   const curves = useMemo(() => normCurves(size), [size]);
-  const qN = parseFloat(duty.flow), hN = parseFloat(duty.head);
+  const dUnit = duty.flowUnit || 'L/s';
+  const qN = TO_LS(duty.flow, dUnit), hN = parseFloat(duty.head);
   const pair = findPair(curves, qN, hN);
   const sel = pair.ok ? buildSelCurve(pair.A, pair.B, pair.t) : null;
   const eff = sel ? selVal(sel, qN, 'e') : null;
@@ -767,7 +774,7 @@ function DatasheetStep({ db, group, size, duty, motorKw, opts }) {
               <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Application</td><td className="font-semibold text-right">{duty.application || '-'}</td></tr>
               <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Liquid / Density</td><td className="font-semibold text-right">Water / {duty.density || 1000} kg/m³</td></tr>
               <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Viscosity</td><td className="font-semibold text-right">{duty.viscosity || 1} cP</td></tr>
-              <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Req. Flow Rate</td><td className="font-bold text-right text-blue-700">{duty.flow} L/s ({qN ? (qN * 3.6).toFixed(2) : '-'} m³/h)</td></tr>
+              <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Req. Flow Rate</td><td className="font-bold text-right text-blue-700">{duty.flow} {dUnit} ({qN > 0 ? (dUnit === 'm³/h' ? (qN).toFixed(2) + ' L/s' : (qN * 3.6).toFixed(2) + ' m³/h') : '-'})</td></tr>
               <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Req. Head</td><td className="font-bold text-right text-emerald-700">{duty.head} m</td></tr>
               <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">NPSHa</td><td className="font-semibold text-right">{duty.npsha || '-'} m</td></tr>
               <tr className="border-b border-slate-100"><td className="py-0.5 text-slate-600">Elec. Rate</td><td className="font-semibold text-right">{duty.elecRate} ฿/kWh</td></tr>
