@@ -3,21 +3,26 @@
 โปรแกรมเลือกปั๊ม (Pump Selection Program) ของ FlowCore — standalone HTML
 ใช้ React + Tailwind (CDN) ข้อมูลปั๊มฝังในไฟล์ เปิดด้วยเบราว์เซอร์ได้เลย
 
-**เวอร์ชัน Complete:** ครอบคลุมทุกรุ่นทุกรอบจากแคตตาล็อก manufacturer (1,461 รุ่น / 28 series)
-ใช้ **curve จริงของทุกขนาดใบพัด + interpolation ระหว่างใบพัด** — ไม่ใช้ Affinity Law
-(รุ่นก่อนหน้าใช้ Affinity ในการ trim ใบพัด ซึ่งค่าจริงไม่เป็นไปตามนั้น)
+**เวอร์ชัน Complete:** ครอบคลุมทุกรุ่นที่มี performance curve จากแคตตาล็อก manufacturer
+ใช้ **curve จริงของทุกขนาดใบพัด + interpolation ระหว่างใบพัด** — ไม่ใช้ Affinity Law ในการ trim ใบพัด
+(รุ่นก่อนหน้าใช้ Affinity ในการ trim ซึ่งค่าจริงไม่เป็นไปตามนั้น)
 
 ## ฟีเจอร์หลัก
 
 - ป้อน Duty Point (flow m³/h หรือ L/s, head, tolerance ฯลฯ) → ค้นหาปั๊มที่ครอบคลุม duty (interpolate ระหว่างใบพัด)
-  (default หน่วย flow = m³/h เลือกเป็น L/s ได้; dropdown series แสดงคำอธิบายประเภทปั๊ม)
-- แสดง **curve จริงของทุกใบพัด** (5-6 เส้นต่อรุ่น) + **curve ที่ interpolate ตาม duty** (เส้นหนา)
+  (dropdown series แสดงคำอธิบายประเภทปั๊ม + กรองความถี่ 50/60 Hz; tolerance ±5/10/20/50%)
+- แสดง curve ที่ **interpolate ตาม duty** (เส้น Operate หนา) + ค่า Eff/Power/NPSHr @ duty จากข้อมูลจริง
 - รองรับปั๊ม 3 ประเภท: ใบพัดปรับได้ (EA/EAZ/EH/ES/EGM → หาเส้นผ่านศูนย์กลาง), ใบพัดตรึง (EJ → หาความเร็วรอบ), curve เดียว (FDL/FTD)
+- **Dropdown "Curve Display" 3 โหมด** (หน้า Adjust Curve — แทนที่การแสดงเส้นใบพัดทุกใบ + checkbox VSD แบบเดิม):
+  1. **Max / Min Impeller + Operating** — เส้นใบ Max/Min (เส้นประ) + เส้น Operate (เส้นทึบ)
+  2. **Operating Curve only** — เส้น Operate เส้นเดียว
+  3. **Operating + Inverter (60–90%)** — เส้น Operate (ทึบ) + เส้น Inverter 60/70/80/90% (เส้นประ)
+     คำนวณด้วย Affinity Law: Q∝r, H∝r², P∝r³, η คงที่, NPSH∝r² — **วาดครบ H-Q / Efficiency / Power / NPSH**
 - **Dropdown เลือกขนาดมอเตอร์ (kW)** — ค่าเริ่มต้น Auto = ขนาดที่แนะนำจากกำลังสูงสุดของ curve
   ถ้าเลือก kW เล็กลง จุดกราฟที่กำลังเกินมอเตอร์ = **เส้นประแดง** + เส้นระดับ kW
-- VSD curve preview (ความเร็วรอบรองของแต่ละรุ่น)
-- ค่า Eff/Power/NPSHr @ duty จากข้อมูลจริง + ค่าไฟฟ้า IE1-4
-- Datasheet พร้อม Assembly Drawing (1,351/1,461 รุ่น) + Export HTML / Print PDF
+- ค่าไฟฟ้าโดยประมาณ IE1–IE4 (ใช้ efficiency ตาม class ของมอเตอร์แต่ละตัว)
+- Datasheet พร้อม Assembly Drawing + Export HTML / Print PDF
+  (กราฟใน Datasheet แสดงโหมด Max/Min + Operating เสมอ)
 - โลโก้ FlowCore + บริษัท Siamraj Public Company Limited.
 
 ## วิธีใช้งาน
@@ -33,9 +38,11 @@
 ```
 FlowCore-Selection-Program/
 ├── index.html
-├── Pump Drawing/      # รูป Assembly Drawing (1,357 ไฟล์)
-└── db/
-    └── db_v2.json     # ฐานข้อมูล (สำหรับ rebuild)
+├── Pump Drawing/      # รูป Assembly Drawing (~1,283 ไฟล์)
+├── db/
+│   └── db_v2.json     # ฐานข้อมูล (สำหรับ rebuild)
+├── README.md
+├── CODE_GUIDE.md       # คู่มือสถาปัตยกรรมโค้ดสำหรับนักพัฒนา / AI agent
 ```
 
 ## โครงสร้างข้อมูล (db/db_v2.json)
@@ -69,15 +76,17 @@ FlowCore-Selection-Program/
 }
 ```
 
-- **Flow หน่วย L/s** (×3.6 = m³/h)
+- **Flow หน่วย L/s ภายใน** (×3.6 = m³/h)
 - `variantType`: `dia` = ใบพัดปรับได้ (ค่า curve = mm) · `speed` = ใบพัดตรึง (ค่า curve = rpm เช่น EJ)
   · `none` = curve เดียว (FDL/FTD)
 - `allow` = ช่วง Flow ที่วิ่งได้ (Allowable Region จาก manufacturer)
-- E/P ของใบพัดกลาง = **ค่าจริง** (ไม่ประมาณ) — NPSH มีเฉพาะใบพัด max/min
+- E/P ของใบพัดกลาง = **ค่าจริง** (ไม่ประมาณ) — NPSH มีเฉพาะใบพัด max/min (มีกลไก fallback ไปใช้เส้นอ้างอิง)
 
 ## หมายเหตุ
 
-- series EA(1450)/EA(2900) ฯลฯ ที่ซ้ำ (DT3 #2) = รุ่น drive type ต่างกัน ข้อมูลคนละชุด
+- series EA(1450)/EA(2900) ฯลฯ ที่ซ้ำ = รุ่น drive type ต่างกัน ข้อมูลคนละชุด
 - FDL/FTD (ปั๊มหลายชั้น/ท่อ) ไม่มีใบพัดปรับ — จับคู่ duty แบบ curve เดียว ± tolerance
-- บางรุ่น (EAZ 1750/2900 rpm บางตัว) ไม่มีรูปในแคตตาล็อก — Datasheet ซ่อน section อัตโนมัติ
-- สคริปต์สกัดข้อมูล: `/EIFEL-Extraction/` (phase1-7) ใช้ rebuild DB จากแคตตาล็อก manufacturer
+- บางรุ่นไม่มีรูปในแคตตาล็อก — Datasheet ซ่อน section อัตโนมัติ
+- สคริปต์สกัดข้อมูลเดิม: `/EIFEL-Extraction/` (phase1-7) ใช้ rebuild DB จากแคตตาล็อก manufacturer (อยู่เครื่อง ไม่ได้อยู่ใน repo นี้)
+
+> 📖 นักพัฒนาหรือ AI agent ที่จะแก้โค้ด อ่าน **`CODE_GUIDE.md`** ก่อน — มีสถาปัตยกรรม ฟังก์ชันหลัก และกติกาการแก้/ทดสอบครบ
