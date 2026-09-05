@@ -465,7 +465,7 @@ function CurveStep({ group, size, q, h, motorKw, setMotorKw, next, back, duty })
   const unit = duty.flowUnit || 'L/s';
   const [flow, setFlow] = useState(q ? FROM_LS(q, unit).toFixed(2) : '');
   const [head, setHead] = useState(h || '');
-  const [showInverter, setShowInverter] = useState(false);
+  const [curveMode, setCurveMode] = useState('maxmin'); // 'maxmin' | 'operate' | 'inverter'
   const qN = TO_LS(flow, unit), hN = parseFloat(head);
   const curves = useMemo(() => normCurves(size), [size]);
   const pair = (qN > 0 && hN > 0) ? findPair(curves, qN, hN, parseFloat(duty.tolerance) || 1.1) : null;
@@ -546,16 +546,19 @@ function CurveStep({ group, size, q, h, motorKw, setMotorKw, next, back, duty })
             </div>
           </div>
 
-          <label className="flex items-center gap-2 cursor-pointer select-none bg-white border rounded-lg p-3">
-            <input type="checkbox" checked={showInverter} onChange={e => setShowInverter(e.target.checked)} className="accent-orange-500 w-4 h-4" />
-            <span className="text-sm font-medium text-orange-700">VSD Curve Preview</span>
-            {size.vsdSpeeds && size.vsdSpeeds.length > 0 && <span className="text-[10px] text-slate-400">({size.vsdSpeeds.join('/')} rpm)</span>}
-          </label>
+          <div className="bg-white border rounded-lg p-3">
+            <label className="block text-sm font-medium text-slate-600 mb-2">Curve Display</label>
+            <select value={curveMode} onChange={e => setCurveMode(e.target.value)} className="w-full border rounded p-2 text-sm font-semibold text-slate-700 bg-white">
+              <option value="maxmin">Max / Min Impeller + Operating</option>
+              <option value="operate">Operating Curve only</option>
+              <option value="inverter">Operating + Inverter (60–90%)</option>
+            </select>
+          </div>
         </div>
 
         <div className="lg:col-span-2">
           <PumpChart size={size} curves={curves} sel={sel} flow={qN} head={hN} eff={eff} pwr={pwr} npshr={npshr}
-            effMotor={effMotor} showInverter={showInverter} />
+            effMotor={effMotor} curveMode={curveMode} />
         </div>
       </div>
     </div>
@@ -566,7 +569,7 @@ function CurveStep({ group, size, q, h, motorKw, setMotorKw, next, back, duty })
 const C_HEAD = '#2563eb', C_EFF = '#22c55e', C_POW = '#8b5cf6', C_NPSH = '#f97316', C_RED = '#ef4444';
 const PALETTE = ['#2563eb', '#0ea5e9', '#6366f1', '#a855f7', '#ec4899', '#f97316', '#14b8a6', '#84cc16', '#f59e0b', '#64748b'];
 
-function PumpChart({ size, curves, sel, flow, head, eff, pwr, npshr, effMotor, showInverter }) {
+function PumpChart({ size, curves, sel, flow, head, eff, pwr, npshr, effMotor, curveMode }) {
   const hasPower = curves.some(c => c.qp && c.qp.length);
   const hasNpsh = curves.some(c => c.npsh && c.npsh.length);
   const allPts = [];
@@ -601,12 +604,13 @@ function PumpChart({ size, curves, sel, flow, head, eff, pwr, npshr, effMotor, s
   const selPts = sel ? sel.qh : [];
 
   // inverter curves via affinity from selected curve
-  const invCurves = (showInverter && sel && size.vsdSpeeds && size.vsdSpeeds.length) ? size.vsdSpeeds.map(spd => {
-    const r = spd / (size.speed || spd);
+  const invCurves = (curveMode === 'inverter' && sel) ? [0.9, 0.8, 0.7, 0.6].map(r => {
     return {
-      spd, r,
+      r,
       qh: sel.qh.map(p => [p[0] * r, p[1] * r * r]),
+      qe: sel.qh.map(p => { const e = selVal(sel, p[0], 'e'); return [p[0] * r, e]; }),
       qp: (sel.qp && sel.qp.length ? sel.qh.map(p => { const pw = selVal(sel, p[0], 'p'); return [p[0] * r, pw !== null ? pw * r * r * r : 0]; }) : []),
+      npsh: sel.qh.map(p => { const n = selVal(sel, p[0], 'n'); return [p[0] * r, n !== null ? n * r * r : null]; }),
     };
   }) : [];
 
@@ -676,13 +680,17 @@ function PumpChart({ size, curves, sel, flow, head, eff, pwr, npshr, effMotor, s
         {hasPower && <text x="12" y={powBot - powH / 2} textAnchor="middle" transform={`rotate(-90 12 ${powBot - powH / 2})`} fontWeight="bold" fill="#8b5cf6">Power (kW)</text>}
         {hasNpsh && <text x="12" y={npshBot - npshH / 2} textAnchor="middle" transform={`rotate(-90 12 ${npshBot - npshH / 2})`} fontWeight="bold" fill="#f97316">NPSHr (m)</text>}
 
-        {/* all real dia curves (head panel) */}
-        {curves.map((c, i) => {
-          const d = path(toHeadPts(c.qh));
-          if (!d) return null;
-          const isHi = c.v === curves[curves.length - 1].v;
-          return <path key={'c' + i} d={d} fill="none" stroke={PALETTE[i % PALETTE.length]} strokeWidth={isHi ? 1.6 : 1.1} strokeDasharray={isHi ? 'none' : '4 3'} opacity={0.85} />;
-        })}
+        {/* Max / Min impeller curves (head panel) — dashed, only in "maxmin" mode */}
+        {curveMode === 'maxmin' && curves.length > 0 && (() => {
+          const lo = curves[0], hi = curves[curves.length - 1];
+          const draw = (c, stroke) => { const d = path(toHeadPts(c.qh)); return d ? <path d={d} fill="none" stroke={stroke} strokeWidth="1.4" strokeDasharray="5 4" opacity={0.9} /> : null; };
+          return (
+            <g>
+              {lo.v !== hi.v && draw(lo, '#64748b')}
+              {draw(hi, '#2563eb')}
+            </g>
+          );
+        })()}
         {/* selected interpolated curve (with motor-limit red zone) */}
         {sel && (() => {
           const pth = a => a.length < 2 ? '' : 'M ' + a.map((p, i) => (i ? 'L ' : '') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
@@ -726,10 +734,29 @@ function PumpChart({ size, curves, sel, flow, head, eff, pwr, npshr, effMotor, s
           );
         })()}
 
-        {/* inverter curves */}
+        {/* inverter curves (60/70/80/90% of operating speed): head + eff + power + npsh */}
         {invCurves.map((iv, i) => {
           const d = path(toHeadPts(iv.qh));
-          return d ? <path key={'inv' + i} d={d} fill="none" stroke="#f59e0b" strokeWidth="1.2" strokeDasharray="2 4" opacity="0.8" /> : null;
+          const pts = toHeadPts(iv.qh);
+          const last = pts[pts.length - 1];
+          const aux = (arr, yFn) => {
+            if (!arr || !arr.length) return '';
+            const flat = [];
+            arr.forEach(p => { const v = p[1]; if (v === null || v === undefined || isNaN(v)) return; const y = yFn(v); if (isFinite(y)) flat.push({ x: toX(p[0]), y }); });
+            return path(flat);
+          };
+          const dE = aux(iv.qe, e => toYE(clamp(e, 0, 100)));
+          const dP = hasPower ? aux(iv.qp, p => toYP(Math.max(p, 0))) : '';
+          const dN = hasNpsh ? aux(iv.npsh, n => toYN(Math.max(n, 0))) : '';
+          return (
+            <g key={'inv' + i}>
+              {d && <path d={d} fill="none" stroke="#f59e0b" strokeWidth="1.2" strokeDasharray="2 4" opacity="0.8" />}
+              {dE && <path d={dE} fill="none" stroke="#f59e0b" strokeWidth="1.1" strokeDasharray="1 3" opacity="0.6" />}
+              {dP && <path d={dP} fill="none" stroke="#f59e0b" strokeWidth="1.1" strokeDasharray="1 3" opacity="0.6" />}
+              {dN && <path d={dN} fill="none" stroke="#f59e0b" strokeWidth="1.1" strokeDasharray="1 3" opacity="0.6" />}
+              {last && <text x={last.x + 3} y={last.y} fill="#b45309" className="text-[8px]" fontWeight="bold">{Math.round(iv.r * 100) + '%'}</text>}
+            </g>
+          );
         })}
 
         {/* motor limit line */}
@@ -755,14 +782,26 @@ function PumpChart({ size, curves, sel, flow, head, eff, pwr, npshr, effMotor, s
 
         {/* legend */}
         <g transform="translate(70, 34)">
-          {curves.map((c, i) => (
-            <g key={'lg' + i} transform={`translate(${i * 118}, 0)`}>
-              <line x1="0" y1="0" x2="16" y2="0" stroke={PALETTE[i % PALETTE.length]} strokeWidth="2" strokeDasharray={c.v === curves[curves.length - 1].v ? 'none' : '4 3'} />
-              <text x="19" y="3" fill="#475569" className="text-[8px]">{c.v >= 1000 ? (c.v / 1000).toFixed(0) + 'k' : Math.round(c.v)}{size.variantType === 'speed' ? '' : 'mm'}</text>
+          {curveMode === 'maxmin' && curves.length > 0 && (() => {
+            const lo = curves[0], hi = curves[curves.length - 1];
+            const fmt = v => v >= 1000 ? (v / 1000).toFixed(0) + 'k' : Math.round(v);
+            const u = size.variantType === 'speed' ? '' : 'mm';
+            return (
+              <g>
+                {lo.v !== hi.v && <g><line x1="0" y1="0" x2="16" y2="0" stroke="#64748b" strokeWidth="2" strokeDasharray="5 4" /><text x="19" y="3" fill="#475569" className="text-[8px]">Min {fmt(lo.v)}{u}</text></g>}
+                <g transform={`translate(${lo.v !== hi.v ? 120 : 0}, 0)`}><line x1="0" y1="0" x2="16" y2="0" stroke="#2563eb" strokeWidth="2" strokeDasharray="5 4" /><text x="19" y="3" fill="#475569" className="text-[8px]">Max {fmt(hi.v)}{u}</text></g>
+                {sel && <g transform={`translate(${lo.v !== hi.v ? 240 : 120}, 0)`}><line x1="0" y1="0" x2="16" y2="0" stroke="#0f172a" strokeWidth="3" /><text x="19" y="3" fill="#0f172a" className="text-[8px] font-bold">Operate</text></g>}
+              </g>
+            );
+          })()}
+          {curveMode === 'operate' && sel && <g><line x1="0" y1="0" x2="16" y2="0" stroke="#0f172a" strokeWidth="3" /><text x="19" y="3" fill="#0f172a" className="text-[8px] font-bold">Operating curve</text></g>}
+          {curveMode === 'inverter' && sel && (
+            <g>
+              <g><line x1="0" y1="0" x2="16" y2="0" stroke="#0f172a" strokeWidth="3" /><text x="19" y="3" fill="#0f172a" className="text-[8px] font-bold">Operate</text></g>
+              <g transform="translate(120, 0)"><line x1="0" y1="0" x2="16" y2="0" stroke="#f59e0b" strokeWidth="2" strokeDasharray="2 4" /><text x="19" y="3" fill="#475569" className="text-[8px]">Inverter 60–90%</text></g>
             </g>
-          ))}
-          {sel && <g transform={`translate(${Math.min(curves.length * 118, 440)}, 0)`}><line x1="0" y1="0" x2="16" y2="0" stroke="#0f172a" strokeWidth="3" /><text x="19" y="3" fill="#0f172a" className="text-[8px] font-bold">Sel.</text></g>}
-          <text x="0" y="14" fill="#94a3b8" className="text-[8px] italic">Solid = real impeller curves · Bold = interpolated impeller for this duty</text>
+          )}
+          <text x="0" y="14" fill="#94a3b8" className="text-[8px] italic">{curveMode === 'maxmin' ? 'Dashed = max/min impeller · Solid = operating curve' : curveMode === 'inverter' ? 'Dashed = inverter 60/70/80/90% · Solid = operating curve' : 'Solid = operating curve'}</text>
         </g>
       </svg>
     </div>
@@ -909,7 +948,7 @@ function DatasheetStep({ db, group, size, duty, motorKw, opts }) {
         </div>
         <div className="mt-4">
           <h4 className="font-bold bg-slate-200 px-2 py-0.5 uppercase">5. Performance Curve</h4>
-          <div className="flex justify-center mt-2"><PumpChart size={size} curves={curves} sel={sel} flow={qN} head={hN} eff={eff} pwr={pwr} npshr={npshr} effMotor={parseFloat(motorKw) > 0 ? parseFloat(motorKw) : null} showInverter={false} /></div>
+          <div className="flex justify-center mt-2"><PumpChart size={size} curves={curves} sel={sel} flow={qN} head={hN} eff={eff} pwr={pwr} npshr={npshr} effMotor={parseFloat(motorKw) > 0 ? parseFloat(motorKw) : null} curveMode="maxmin" /></div>
         </div>
         {size.drawing && (
           <div className="mt-4 pt-4 border-t border-slate-300" style={{ pageBreakBefore: 'always' }}>
