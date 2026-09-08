@@ -67,13 +67,13 @@ DB = { companyLogo: 'data:...', modelGroups: [ { id:'S2', seriesId, modelName:'E
 
 1. **`normCurves(sz)`** → แปลง `diaCurves` เป็น `[{v, qh, qe, qp, npsh}]`, ลบจุด NaN, **เรียง v น้อย→มาก** (curves[0]=Min, [สุดท้าย]=Max)
 2. **`findPair(curves, q, H, tol)`** — ใจกลาง:
-   - head ที่ duty flow ของใบ Max = `hHi`; ถ้า `H > hHi` → **ไม่เข้า** (ต้องรุ่นใหญ่)
+   - head ที่ duty flow ของใบ Max = `hHi`; ถ้า `H > hHi×tol` → **ไม่เข้า** (เกิน tolerance ของ duty — ต้องรุ่นใหญ่); ถ้า `hHi < H ≤ hHi×tol` → ยอมรับแบบ runout แล้วบังคับใช้ใบ Max (ตรงกับที่ EIFEL เลือกได้)
    - หาใบพัดคู่ที่ head คร่อม H (`hA ≤ H ≤ hB` ที่ flow q) → `t` = interpolate, `vReq` = dia/rpm ระหว่างคู่
-   - curve เดียว / ช่วงขอบ (runout): ยอมภายใน tolerance (`H ≥ hHi*(2−tol)`) แล้วบังคับใช้ใบ Max
+   - curve เดียว / ช่วงขอบ (runout): ยอมภายใน tolerance (`H ≤ hHi×tol` และ `H ≥ hHi*(2−tol)`) แล้วบังคับใช้ใบ Max/curve เดียว
    - tol จาก UI = 1.05/1.1/1.2/1.5 (±5/10/20/50%)
 3. **`buildSelCurve(A, B, t, npshRef)`** → curve Operate (interpolate qh ระหว่าง A/B แบบ index-aligned); `qe/qp/npsh` ยืมชุด A; ผลลัพธ์ `{qh, qe, qp, npsh, A, B, t, qEnd, npshRef}`
 4. **`selVal(sel, q, 'e'|'p'|'n')`** → ค่า Eff/Power/NPSH ที่ flow q บน curve ที่เลือก (interpolate ระหว่าง A/B ของค่าจริงนั้น; NPSH fallback ไป `npshRef` ถ้าไม่มี)
-5. **`evaluatePump(sz, q, H, tol)`** → ตรวจ `allow` window (allowable region) + เรียก findPair/buildSelCurve/selVal; **กฎ completeness: ถ้า eff/pwr/npsh ตัวใด null → รุ่นนั้นไม่เข้า** (Step 2 แสดงเฉพาะรุ่นข้อมูลครบ)
+5. **`evaluatePump(sz, q, H, tol)`** → ตรวจ `allow` window (allowable region) + เรียก findPair/buildSelCurve/selVal; **กฎ: eff/pwr ตัวใด null → รุ่นนั้นไม่เข้า** (NPSH ไม่มีข้อมูลบนเว็บ manufacturer = **ไม่บล็อก** — แสดง "-" เหมือน EIFEL; 2026-09-08)
 6. **`groupPumpsForDuty(groups, ...)`** → loop ทุกรุ่น → เก็บที่เข้า → เรียง eff มาก→น้อย
 
 ตัวช่วย: `lin(a,b,t)`, `clamp(v,a,b)`, `interpXY(arr,x,clampLo)` (ไม่ extrapolate — NPSH clamp ด้าน low ได้), `hAt/eAt/pAt/nAt`, `curveEndQ/curveStartQ`, `npshRefOf(curves)` (เลือกเส้น npsh ของใบที่ใหญ่สุดที่มีข้อมูล)
@@ -132,10 +132,11 @@ SVG viewBox `620 × (bottomY+30)`; panel ซ้อนกันแนวตั้
 5. หลังแก้ ตรวจด้วย diff ว่าเปลี่ยนเฉพาะที่ตั้งใจ (ไฟล์มี backup ประวัติใน `.gitignore`: `*_BACKUP*.html`, `index.backup-*.html`)
 6. commit message ใช้ conventional style ภาษาอังกฤษสั้นๆ (ตัวอย่าง: `feat: ...`, `fix: ...`)
 
-## ประวัติการแก้ที่เกี่ยวข้อง (2026-09-05)
+## ประวัติการแก้ที่เกี่ยวข้อง
 
-- **`feat`:** เปลี่ยนหน้า Adjust Curve จาก (วาดทุกใบ + checkbox VSD) → **dropdown Curve Display 3 โหมด**; โหมด inverter ใช้ Affinity 60/70/80/90% และวาด Eff/Power/NPSH ของ inverter ด้วย
-- **`feat`:** Datasheet กราฟใช้โหมด maxmin เสมอ
+- **`fix` 2026-09-08:** (1) รุ่นที่เว็บ manufacturer ไม่มี NPSH curve (23 รุ่น เช่น EH100-65-200) ไม่ถูกบล็อกอีกต่อไป — แสดง "-" ในตาราง/Step 3/Datasheet; (2) duty head เหนือ curve ใบ Max เล็กน้อย ยอมรับได้ภายใน tolerance ที่เลือก (H ≤ hHi×tol) → บังคับใช้ใบ Max ตรงกับที่ EIFEL เลือกได้
+- **`feat` 2026-09-05:** เปลี่ยนหน้า Adjust Curve จาก (วาดทุกใบ + checkbox VSD) → **dropdown Curve Display 3 โหมด**; โหมด inverter ใช้ Affinity 60/70/80/90% และวาด Eff/Power/NPSH ของ inverter ด้วย
+- **`feat` 2026-09-05:** Datasheet กราฟใช้โหมด maxmin เสมอ
 - (ก่อนหน้า) `fix:` ค่าไฟ datasheet IE1–IE4 คิด per-class แทนค่าเดียว
 
 ## หมายเหตุพิเศษสำหรับ agent ที่จะ "ทำความเข้าใจ"

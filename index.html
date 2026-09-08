@@ -112,13 +112,13 @@ function findPair(curves, q, H, tol) {
   if (curves.length === 1) {
     const h = hAt(curves[0], q);
     // ต้องไม่เกิน curve (บน) — ด้านล่างยอม tolerance ได้
-    const ok = h !== null && H <= h + 1e-9 && H >= h * (2 - t) - 1e-9;
+    const ok = h !== null && H <= h * t + 1e-9 && H >= h * (2 - t) - 1e-9;
     return { A: curves[0], B: curves[0], t: 0, vReq: curves[0].v, ok, h: h };
   }
   const lo = curves[0], hi = curves[curves.length - 1];
   const hHi = hAt(hi, q);
   if (hHi === null) return { ok: false }; // flow beyond largest curve
-  if (H > hHi + 1e-9) return { ok: false, above: true }; // duty head above max impeller curve -> not usable
+  if (H > hHi * t + 1e-9) return { ok: false, above: true }; // duty head above max impeller curve beyond tolerance -> not usable
   // pair bracket: duty H between two adjacent real curves at q
   for (let i = 0; i < curves.length - 1; i++) {
     const A = curves[i], B = curves[i + 1];
@@ -182,8 +182,8 @@ function evaluatePump(sz, q, H, tol) {
   const eff = selVal(sel, q, 'e');
   const pwr = selVal(sel, q, 'p');
   const npsh = selVal(sel, q, 'n');
-  // Step 2 shows only models with complete Flow/Head/Power/Efficiency/NPSH — incomplete = not usable
-  if (eff === null || pwr === null || npsh === null) return null;
+  // NPSH missing on manufacturer site is NOT a blocker (show '—'); require only Flow/Head/Power/Efficiency
+  if (eff === null || pwr === null) return null;
   const vReq = (sz.variantType === 'none') ? null : pair.vReq;
   return {
     sz, sel, vReq, eff, pwr, npsh,
