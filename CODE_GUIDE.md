@@ -94,7 +94,7 @@ DB = { companyLogo: 'data:...', modelGroups: [ { id:'S2', seriesId, modelName:'E
 - วาดครบ 4 panel: H-Q (dash `2 4`, opacity .8, มีป้าย %) + Eff/Power/NPSH (dash `1 3`, opacity .6)
 - หมายเหตุ: เป็นค่าประมาณ Affinity (ต่างจากตัวหลักที่ใช้ curve จริง) — โหมดนี้มีไว้พรีวิว
 
-`PumpChart` รับ prop `curveMode`; Datasheet (Step 5) ส่ง `curveMode="maxmin"` เสมอ
+`PumpChart` รับ prop `curveMode`; `curveMode` ถูกยกเป็น state ของ `SelectionFlow` → **Step 3 และ Datasheet (Step 5) ใช้โหมดเดียวกันที่เลือกไว้** (2026-09-08)
 Legend ใต้กราฟปรับตามโหมด; mode `maxmin` ใช้ `curves[0]`/`curves[length-1]` เป็น Min/Max (ต้องเชื่อว่า normCurves เรียงแล้ว)
 
 ## PumpChart — แผนผังพิกัด (ถ้าจะแก้กราฟ)
@@ -135,8 +135,9 @@ SVG viewBox `620 × (bottomY+30)`; panel ซ้อนกันแนวตั้
 ## ประวัติการแก้ที่เกี่ยวข้อง
 
 - **`fix` 2026-09-08:** (1) รุ่นที่เว็บ manufacturer ไม่มี NPSH curve (23 รุ่น เช่น EH100-65-200) ไม่ถูกบล็อกอีกต่อไป — แสดง "-" ในตาราง/Step 3/Datasheet; (2) duty head เหนือ curve ใบ Max เล็กน้อย ยอมรับได้ภายใน tolerance ที่เลือก (H ≤ hHi×tol) → บังคับใช้ใบ Max ตรงกับที่ EIFEL เลือกได้
+- **`feat` 2026-09-08:** Datasheet พิมพ์กราฟตามโหมด Curve Display ที่เลือกใน Step 3 (เดิมบังคับ maxmin) + เพิ่มปุ่ม **Back** หน้า Datasheet กลับไปแก้ Options ได้
 - **`feat` 2026-09-05:** เปลี่ยนหน้า Adjust Curve จาก (วาดทุกใบ + checkbox VSD) → **dropdown Curve Display 3 โหมด**; โหมด inverter ใช้ Affinity 60/70/80/90% และวาด Eff/Power/NPSH ของ inverter ด้วย
-- **`feat` 2026-09-05:** Datasheet กราฟใช้โหมด maxmin เสมอ
+- **`feat` 2026-09-05:** Datasheet กราฟใช้โหมด maxmin เสมอ *(ถูกแทนที่ 2026-09-08 — ใช้โหมดที่ผู้ใช้เลือก)*
 - (ก่อนหน้า) `fix:` ค่าไฟ datasheet IE1–IE4 คิด per-class แทนค่าเดียว
 
 ## หมายเหตุพิเศษสำหรับ agent ที่จะ "ทำความเข้าใจ"

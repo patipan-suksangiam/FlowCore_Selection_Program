@@ -271,6 +271,7 @@ function SelectionFlow({ db }) {
   const [selSize, setSelSize] = useState(null);
   const [opts, setOpts] = useState({ material: '', seal: '', connection: '' });
   const [motorKw, setMotorKw] = useState('');
+  const [curveMode, setCurveMode] = useState('maxmin'); // 'maxmin' | 'operate' | 'inverter' — shared so Datasheet prints the same mode
 
   const groups = db.modelGroups;
   const q = TO_LS(duty.flow, duty.flowUnit);
@@ -295,9 +296,9 @@ function SelectionFlow({ db }) {
     <DutyStep key="d" duty={duty} setDuty={setDuty} groups={groups} doSearch={doSearch} />,
     <TableStep key="t" cands={cands} q={q} h={h} unit={duty.flowUnit} handleSelect={handleSelect} back={() => setStep(0)} />,
     <CurveStep key="c" group={selGroup} size={selSize} q={q} h={h} motorKw={motorKw} setMotorKw={setMotorKw}
-      next={() => setStep(3)} back={() => setStep(1)} duty={duty} />,
+      next={() => setStep(3)} back={() => setStep(1)} duty={duty} curveMode={curveMode} setCurveMode={setCurveMode} />,
     <OptionsStep key="o" group={selGroup} opts={opts} setOpts={setOpts} next={() => setStep(4)} back={() => setStep(2)} />,
-    <DatasheetStep key="ds" db={db} group={selGroup} size={selSize} duty={duty} motorKw={motorKw} opts={opts} />,
+    <DatasheetStep key="ds" db={db} group={selGroup} size={selSize} duty={duty} motorKw={motorKw} opts={opts} curveMode={curveMode} back={() => setStep(3)} />,
   ];
 
   return (
@@ -461,11 +462,10 @@ function TableStep({ cands, q, h, handleSelect, back, unit }) {
 }
 
 /* ---- Step 3: Curve ---- */
-function CurveStep({ group, size, q, h, motorKw, setMotorKw, next, back, duty }) {
+function CurveStep({ group, size, q, h, motorKw, setMotorKw, next, back, duty, curveMode, setCurveMode }) {
   const unit = duty.flowUnit || 'L/s';
   const [flow, setFlow] = useState(q ? FROM_LS(q, unit).toFixed(2) : '');
   const [head, setHead] = useState(h || '');
-  const [curveMode, setCurveMode] = useState('maxmin'); // 'maxmin' | 'operate' | 'inverter'
   const qN = TO_LS(flow, unit), hN = parseFloat(head);
   const curves = useMemo(() => normCurves(size), [size]);
   const pair = (qN > 0 && hN > 0) ? findPair(curves, qN, hN, parseFloat(duty.tolerance) || 1.1) : null;
@@ -858,7 +858,7 @@ function OptionsStep({ group, opts, setOpts, next, back }) {
 }
 
 /* ---- Step 5: Datasheet ---- */
-function DatasheetStep({ db, group, size, duty, motorKw, opts }) {
+function DatasheetStep({ db, group, size, duty, motorKw, opts, curveMode, back }) {
   const curves = useMemo(() => normCurves(size), [size]);
   const dUnit = duty.flowUnit || 'L/s';
   const qN = TO_LS(duty.flow, dUnit), hN = parseFloat(duty.head);
@@ -889,6 +889,7 @@ function DatasheetStep({ db, group, size, duty, motorKw, opts }) {
       <div className="flex flex-wrap justify-between items-center gap-2 print:hidden">
         <h3 className="text-2xl font-bold border-l-4 border-emerald-500 pl-3">Pump Datasheet</h3>
         <div className="flex gap-2">
+          <button onClick={back} className="flex items-center gap-2 text-slate-700 bg-slate-200 px-4 py-2 rounded hover:bg-slate-300"><i className="fa-solid fa-arrow-left text-sm"></i> Back</button>
           <button onClick={exportHTML} className="flex items-center gap-2 text-blue-700 bg-blue-100 px-4 py-2 rounded hover:bg-blue-200"><i className="fa-solid fa-code text-sm"></i> Save HTML</button>
           <button onClick={() => window.print()} className="flex items-center gap-2 text-emerald-700 bg-emerald-100 px-4 py-2 rounded hover:bg-emerald-200"><i className="fa-solid fa-download text-sm"></i> Print / PDF</button>
         </div>
@@ -948,7 +949,7 @@ function DatasheetStep({ db, group, size, duty, motorKw, opts }) {
         </div>
         <div className="mt-4">
           <h4 className="font-bold bg-slate-200 px-2 py-0.5 uppercase">5. Performance Curve</h4>
-          <div className="flex justify-center mt-2"><PumpChart size={size} curves={curves} sel={sel} flow={qN} head={hN} eff={eff} pwr={pwr} npshr={npshr} effMotor={parseFloat(motorKw) > 0 ? parseFloat(motorKw) : null} curveMode="maxmin" /></div>
+          <div className="flex justify-center mt-2"><PumpChart size={size} curves={curves} sel={sel} flow={qN} head={hN} eff={eff} pwr={pwr} npshr={npshr} effMotor={parseFloat(motorKw) > 0 ? parseFloat(motorKw) : null} curveMode={curveMode || 'maxmin'} /></div>
         </div>
         {size.drawing && (
           <div className="mt-4 pt-4 border-t border-slate-300" style={{ pageBreakBefore: 'always' }}>
