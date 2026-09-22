@@ -134,6 +134,8 @@ SVG viewBox `620 × (bottomY+30)`; panel ซ้อนกันแนวตั้
 
 ## ประวัติการแก้ที่เกี่ยวข้อง
 
+- **`fix` 2026-09-22:** ปั๊มใบพัดตรึง **EJ ไม่ขึ้นเลยทั้ง 11 รุ่น** — `normCurves` เรียง curve ตาม `dia` แต่ข้อมูล EJ เก็บ **ความเร็วรอบ (rpm)** ไว้ในฟิลด์ `dia` (2500/2900/3200) ทำให้ curve รอบต่ำลอยขึ้นบนสุด และ `findPair` เอา curve นั้นเป็นตัวอ้างอิง Max → head ที่ต้องการดู "เกิน curve" → ตัดทิ้งทั้งรุ่น. แก้โดย (1) เรียงตาม `headCap` (head สูงสุด) เมื่อ `variantType:'speed'` + tie-break เมื่อ Max/Min `dia` เท่ากัน (2) เพิ่ม `reqSpeedFromAffinity()` หารอบที่ต้องใช้ด้วย Affinity Law `H = hRated(q/s)·s²`.
+
 - **`fix` 2026-09-08:** (1) รุ่นที่เว็บ manufacturer ไม่มี NPSH curve (23 รุ่น เช่น EH100-65-200) ไม่ถูกบล็อกอีกต่อไป — แสดง "-" ในตาราง/Step 3/Datasheet; (2) duty head เหนือ curve ใบ Max เล็กน้อย ยอมรับได้ภายใน tolerance ที่เลือก (H ≤ hHi×tol) → บังคับใช้ใบ Max ตรงกับที่ EIFEL เลือกได้
 - **`feat` 2026-09-08:** Datasheet พิมพ์กราฟตามโหมด Curve Display ที่เลือกใน Step 3 (เดิมบังคับ maxmin) + เพิ่มปุ่ม **Back** หน้า Datasheet กลับไปแก้ Options ได้
 - **`feat` 2026-09-05:** เปลี่ยนหน้า Adjust Curve จาก (วาดทุกใบ + checkbox VSD) → **dropdown Curve Display 3 โหมด**; โหมด inverter ใช้ Affinity 60/70/80/90% และวาด Eff/Power/NPSH ของ inverter ด้วย

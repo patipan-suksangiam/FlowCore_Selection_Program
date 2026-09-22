@@ -79,6 +79,8 @@ function interpXY(arr, x, clampLo) {
 }
 const curveEndQ = (c) => { const qh = (c && c.qh) || []; return qh.length ? qh[qh.length - 1][0] : null; };
 const curveStartQ = (c) => { const qh = (c && c.qh) || []; return qh.length ? qh[0][0] : null; };
+/* highest head on a curve — orders speed curves (EJ: fixed impeller, `dia` field carries rpm not dia) */
+const headCap = (c) => (c.qh || []).reduce((m, p) => Math.max(m, p[1]), -Infinity);
 
 /* normalize diaCurves -> [{v, qh, qe, qp, npsh}] sorted by v asc */
 function normCurves(sz) {
@@ -92,7 +94,10 @@ function normCurves(sz) {
     const qn = (c.npsh || []).map(p => [parseFloat(p[0]), parseFloat(p[1])]).filter(p => !isNaN(p[0]) && !isNaN(p[1]));
     if (qh.length) out.push({ v, qh, qe, qp, npsh: qn });
   });
-  out.sort((a, b) => a.v - b.v);
+  // EJ/speed pumps store SPEED (rpm) in the `dia` field, so sort by head capability (= speed) so the rated curve stays last;
+  // fixed-impeller sizes whose Max/Min curves share one dia tie-break by head capability for the same reason.
+  if (sz && sz.variantType === 'speed') out.sort((a, b) => headCap(a) - headCap(b));
+  else out.sort((a, b) => (a.v - b.v) || (headCap(a) - headCap(b)));
   return out;
 }
 
@@ -136,6 +141,21 @@ function findPair(curves, q, H, tol) {
     return { A: hi, B: hi, t: 0, vReq: hi.v, ok: true, h: hHi };
   }
   return { ok: false };
+}
+
+/* required speed for fixed-impeller pumps (EJ): solve H = hRated(q/s)·s² (affinity law), s = N / N_rated */
+function reqSpeedFromAffinity(sz, curves, q, H) {
+  const N0 = +sz.speed || 0;
+  if (!N0 || !curves.length) return null;
+  const rated = curves[curves.length - 1]; // normCurves orders the highest-head (= rated) curve last
+  let lo = 0.2, hi = 1.6, s = 1;
+  for (let i = 0; i < 60; i++) {
+    s = (lo + hi) / 2;
+    const hb = hAt(rated, q / s);
+    if (hb === null) { lo = s; continue; }
+    if (hb * s * s < H) lo = s; else hi = s;
+  }
+  return Math.round(N0 * s);
 }
 
 /* build the selected (interpolated) curve points index-aligned between A and B */
@@ -184,7 +204,8 @@ function evaluatePump(sz, q, H, tol) {
   const npsh = selVal(sel, q, 'n');
   // NPSH missing on manufacturer site is NOT a blocker (show '—'); require only Flow/Head/Power/Efficiency
   if (eff === null || pwr === null) return null;
-  const vReq = (sz.variantType === 'none') ? null : pair.vReq;
+  let vReq = (sz.variantType === 'none') ? null : pair.vReq;
+  if (sz.variantType === 'speed') vReq = reqSpeedFromAffinity(sz, curves, q, H);
   return {
     sz, sel, vReq, eff, pwr, npsh,
     hMatch: pair.hA !== undefined ? pair.h : null,
