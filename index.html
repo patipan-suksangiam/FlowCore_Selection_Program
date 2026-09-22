@@ -195,7 +195,10 @@ function evaluatePump(sz, q, H, tol) {
   if (!curves.length) return null;
   // manufacturer allowable operating range (per-pump allow window, stored in L/s)
   const al = sz.allow;
-  if (al && al.minQ != null && (q < al.minQ - 1e-9 || q > al.maxQ + 1e-9)) return null;
+  // NOTE: the manufacturer allowable region (allow window) is ADVISORY only — EIFEL still selects a
+  // model whose min-flow exceeds the duty (e.g. EJ80-140 min-flow 24.1 m³/h selected at 17 m³/h),
+  // so flag it instead of rejecting. Curve coverage alone decides eligibility.
+  const outOfAllow = !!(al && al.minQ != null && (q < al.minQ - 1e-9 || q > al.maxQ + 1e-9));
   const pair = findPair(curves, q, H, tol || 1.1);
   if (!pair.ok) return null;
   const sel = buildSelCurve(pair.A, pair.B, pair.t, npshRefOf(curves));
@@ -205,9 +208,13 @@ function evaluatePump(sz, q, H, tol) {
   // NPSH missing on manufacturer site is NOT a blocker (show '—'); require only Flow/Head/Power/Efficiency
   if (eff === null || pwr === null) return null;
   let vReq = (sz.variantType === 'none') ? null : pair.vReq;
-  if (sz.variantType === 'speed') vReq = reqSpeedFromAffinity(sz, curves, q, H);
+  if (sz.variantType === 'speed') {
+    const rr = reqSpeedFromAffinity(sz, curves, q, H);
+    if (rr !== null && rr > (+sz.speed || 0) * 1.005) return null; // fixed impeller cannot be run above rated speed
+    vReq = rr;
+  }
   return {
-    sz, sel, vReq, eff, pwr, npsh,
+    sz, sel, vReq, eff, pwr, npsh, outOfAllow,
     hMatch: pair.hA !== undefined ? pair.h : null,
   };
 }
