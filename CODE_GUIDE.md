@@ -134,6 +134,8 @@ SVG viewBox `620 × (bottomY+30)`; panel ซ้อนกันแนวตั้
 
 ## ประวัติการแก้ที่เกี่ยวข้อง
 
+- **`fix` 2026-09-22 (c):** จัดอันดับใหม่เป็น "ใกล้ BEP" (เลือกรุ่นเล็ก/พอดีตัว) แทน efficiency อย่างเดียว — แก้ปัญหา EJ80-140 (ปั๊มใหญ่ eff สูง) ชนะรุ่นพอดีตัว (EJ50-120/EJ80-215) ที่ BEP ของมัน; efficiency กลายเป็น tie-break. พร้อม enforce min speed (กันปั๊มใบพัดตรึง `speed` วิ่งต่ำกว่าเส้น min curve).
+
 - **`fix` 2026-09-22 (b):** ทำผลเลือกให้ตรงกับต้นฉบับ EIFEL — (1) `allow` region เปลี่ยนจากตัวกรองแข็ง → เป็นเพียง flag `outOfAllow` (EIFEL เลือกรุ่นที่ min-flow สูงกว่า duty ได้ เช่น EJ80-140 min-flow 24.1 m³/h ที่ duty 17 m³/h) (2) ปั๊มใบพัดตรึง (variantType `speed`) ห้ามเกิน rated speed (เดิมยอม runout ให้ EJ50-120 ที่ 3545 > 3500 rpm). ผล: 17 m³/h @ 22 m → EJ80-140 @ 2865 rpm ตรงกับ EIFEL (2864 rpm).
 
 - **`fix` 2026-09-22:** ปั๊มใบพัดตรึง **EJ ไม่ขึ้นเลยทั้ง 11 รุ่น** — `normCurves` เรียง curve ตาม `dia` แต่ข้อมูล EJ เก็บ **ความเร็วรอบ (rpm)** ไว้ในฟิลด์ `dia` (2500/2900/3200) ทำให้ curve รอบต่ำลอยขึ้นบนสุด และ `findPair` เอา curve นั้นเป็นตัวอ้างอิง Max → head ที่ต้องการดู "เกิน curve" → ตัดทิ้งทั้งรุ่น. แก้โดย (1) เรียงตาม `headCap` (head สูงสุด) เมื่อ `variantType:'speed'` + tie-break เมื่อ Max/Min `dia` เท่ากัน (2) เพิ่ม `reqSpeedFromAffinity()` หารอบที่ต้องใช้ด้วย Affinity Law `H = hRated(q/s)·s²`.
@@ -148,4 +150,4 @@ SVG viewBox `620 × (bottomY+30)`; panel ซ้อนกันแนวตั้
 
 - ตอนอ่านโค้ด ให้ **แยก babel script ออกมาก่อน** (คำสั่งข้อ 3) แล้วอ่านเฉพาะส่วนนั้น — อย่าอ่านทั้ง index.html
 - ถ้าจะแก้เรื่อง curve ระวัง: เส้นที่ "interpolate ระหว่างใบพัด" (Operate) คำนวณจาก **head** เป็นหลัก; Eff/Power ใช้วิธี `selVal` (interpolate ค่าจริงระหว่างใบ A/B ณ flow เดียวกัน) — ไม่ใช่ Affinity (ยกเว้นโหมด inverter preview)
-- การเรียงผลลัพธ์ในตารางใช้ efficiency @ duty; ถ้าแก้เกณฑ์นี้ ระวัง `groupPumpsForDuty` บรรทัด sort
+- การเรียงผลลัพธ์ในตารางใช้ความใกล้ BEP @ duty (เลือกรุ่นเล็ก/พอดีตัว) + efficiency เป็น tie-break; ถ้าแก้เกณฑ์นี้ ระวัง `groupPumpsForDuty` บรรทัด sort

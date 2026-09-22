@@ -210,7 +210,12 @@ function evaluatePump(sz, q, H, tol) {
   let vReq = (sz.variantType === 'none') ? null : pair.vReq;
   if (sz.variantType === 'speed') {
     const rr = reqSpeedFromAffinity(sz, curves, q, H);
-    if (rr !== null && rr > (+sz.speed || 0) * 1.005) return null; // fixed impeller cannot be run above rated speed
+    if (rr === null) return null;
+    const rated = +sz.speed || 0;
+    if (rr > rated * 1.005) return null; // fixed impeller cannot be run above rated speed
+    // cannot go below the minimum speed: curves[0] is the minimum-speed curve (sorted by head capability)
+    const minSpeed = rated * Math.sqrt(Math.max(0, headCap(curves[0])) / Math.max(1e-9, headCap(curves[curves.length - 1])));
+    if (minSpeed > 0 && rr < minSpeed * 0.995) return null; // below minimum speed -> needs a smaller pump
     vReq = rr;
   }
   return {
@@ -229,7 +234,16 @@ function groupPumpsForDuty(groups, q, H, tol, filterGroupIds) {
       if (r) out.push({ ...r, group: g, size: sz });
     });
   });
-  out.sort((a, b) => (b.eff === null ? -1 : b.eff) - (a.eff === null ? -1 : a.eff));
+  // rank by closeness of the duty point to each pump's BEP — prefer the smallest / right-sized pump
+  // (matching EIFEL's convention); efficiency is only a tie-breaker
+  const bepDist = (r) => {
+    const sz = r.size;
+    if (!sz || sz.bepQ == null || sz.bepH == null || !(sz.bepQ > 0) || !(sz.bepH > 0)) return Number.MAX_VALUE;
+    const dq = (q - sz.bepQ) / sz.bepQ;
+    const dh = (H - sz.bepH) / sz.bepH;
+    return Math.hypot(dq, dh);
+  };
+  out.sort((a, b) => bepDist(a) - bepDist(b) || ((b.eff === null ? -1 : b.eff) - (a.eff === null ? -1 : a.eff)));
   return out;
 }
 
