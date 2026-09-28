@@ -134,6 +134,8 @@ SVG viewBox `620 × (bottomY+30)`; panel ซ้อนกันแนวตั้
 
 ## ประวัติการแก้ที่เกี่ยวข้อง
 
+- **fix 2026-09-22 (d):** ปุ่ม Print/PDF ของ Datasheet เดิมพิมพ์หัว/ท้ายโปรแกรมติดไปด้วย — แยก chrome ออกด้วย class app-chrome (App header/footer + step bar + แถบปุ่ม Datasheet) และเพิ่ม @media print ใน head ให้ซ่อน .app-chrome -> เหลือเฉพาะ #ds-content (Data Sheet + Curve + Drawing) บน A4.
+
 - **`fix` 2026-09-22 (c):** จัดอันดับใหม่เป็น "ใกล้ BEP" (เลือกรุ่นเล็ก/พอดีตัว) แทน efficiency อย่างเดียว — แก้ปัญหา EJ80-140 (ปั๊มใหญ่ eff สูง) ชนะรุ่นพอดีตัว (EJ50-120/EJ80-215) ที่ BEP ของมัน; efficiency กลายเป็น tie-break. พร้อม enforce min speed (กันปั๊มใบพัดตรึง `speed` วิ่งต่ำกว่าเส้น min curve).
 
 - **`fix` 2026-09-22 (b):** ทำผลเลือกให้ตรงกับต้นฉบับ EIFEL — (1) `allow` region เปลี่ยนจากตัวกรองแข็ง → เป็นเพียง flag `outOfAllow` (EIFEL เลือกรุ่นที่ min-flow สูงกว่า duty ได้ เช่น EJ80-140 min-flow 24.1 m³/h ที่ duty 17 m³/h) (2) ปั๊มใบพัดตรึง (variantType `speed`) ห้ามเกิน rated speed (เดิมยอม runout ให้ EJ50-120 ที่ 3545 > 3500 rpm). ผล: 17 m³/h @ 22 m → EJ80-140 @ 2865 rpm ตรงกับ EIFEL (2864 rpm).

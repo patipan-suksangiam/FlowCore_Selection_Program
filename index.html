@@ -9,6 +9,16 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script>Babel.registerPreset('react-classic', {presets: [[Babel.availablePresets['react'], {"runtime": "classic"}]]});</script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+@media print{
+  @page{size:A4 portrait;margin:5mm}
+  body{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff;margin:0}
+  .app-chrome{display:none!important}
+  #ds-content{width:100%!important;max-width:200mm!important;margin:0 auto!important;box-shadow:none!important}
+  .drawing-page{page-break-before:always}
+  .chart-container svg{max-height:110mm!important;width:auto!important}
+}
+</style>
 </head>
 <body class="bg-slate-50">
 <div id="root"></div>
@@ -252,7 +262,7 @@ function App() {
   const [view, setView] = useState('home');
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <header className="bg-white border-b shadow-sm">
+      <header className="app-chrome bg-white border-b shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {DB.companyLogo ? <img src={DB.companyLogo} alt="Logo" className="h-9 w-auto object-contain" /> : <div className="h-9 w-24 bg-slate-100 rounded flex items-center justify-center text-slate-400 text-xs">LOGO</div>}
@@ -270,7 +280,7 @@ function App() {
       <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-6">
         {view === 'home' ? <HomeView setView={setView} /> : <SelectionFlow db={DB} />}
       </div>
-      <footer className="border-t bg-white mt-6">
+      <footer className="app-chrome border-t bg-white mt-6">
         <div className="max-w-7xl mx-auto px-4 py-3 text-center">
           <p className="font-bold text-slate-800 text-sm">Siamraj Public Company Limited.</p>
           <a href="https://www.siamrajpump.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 text-xs">www.siamrajpump.com</a>
@@ -345,7 +355,7 @@ function SelectionFlow({ db }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-1 text-xs font-semibold bg-white rounded-lg shadow px-3 py-2 overflow-x-auto">
+      <div className="app-chrome flex items-center gap-1 text-xs font-semibold bg-white rounded-lg shadow px-3 py-2 overflow-x-auto">
         {STEP_NAMES.map((s, i) => (
           <div key={s} className="flex items-center gap-1 whitespace-nowrap">
             {i > 0 && <i className="fa-solid fa-chevron-right text-[9px] text-slate-300 mx-1"></i>}
@@ -930,7 +940,7 @@ function DatasheetStep({ db, group, size, duty, motorKw, opts, curveMode, back }
 
   return (
     <div className="space-y-4 animate-in fade-in">
-      <div className="flex flex-wrap justify-between items-center gap-2 print:hidden">
+      <div className="app-chrome flex flex-wrap justify-between items-center gap-2 print:hidden">
         <h3 className="text-2xl font-bold border-l-4 border-emerald-500 pl-3">Pump Datasheet</h3>
         <div className="flex gap-2">
           <button onClick={back} className="flex items-center gap-2 text-slate-700 bg-slate-200 px-4 py-2 rounded hover:bg-slate-300"><i className="fa-solid fa-arrow-left text-sm"></i> Back</button>
