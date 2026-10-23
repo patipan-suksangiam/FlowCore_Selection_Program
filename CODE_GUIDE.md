@@ -134,6 +134,8 @@ SVG viewBox `620 × (bottomY+30)`; panel ซ้อนกันแนวตั้
 
 ## ประวัติการแก้ที่เกี่ยวข้อง
 
+- **`feat` 2026-10-23:** เพิ่มซีรีส์ **EJT (Self-priming Sewage)** 4 รุ่น — EJT3/EJT4/EJT6/EJT10 เป็น `variantType:'speed'` (ใบพัดตรึง, `dia` ใน diaCurves = rpm), 8–19 เส้นความเร็วต่อรุ่น × 50 จุด; `speed` = ความเร็วสูงสุด, `bepQ/bepH` @ max speed. รอบที่ต้องใช้ยังคำนวณด้วย `reqSpeedFromAffinity` (Affinity Law) → ตัวอย่าง 300 m³/h @ 30 m = EJT10 @ 1,188 rpm. **EJT2/EJT8 ยังไม่เปิดจำหน่าย** จึงไม่ใส่ใน DB (curve เก็บที่ `2026-10 FC Website/data/ejt_curves.json`, `available:false`)
+
 - **fix 2026-09-22 (d):** ปุ่ม Print/PDF ของ Datasheet เดิมพิมพ์หัว/ท้ายโปรแกรมติดไปด้วย — แยก chrome ออกด้วย class app-chrome (App header/footer + step bar + แถบปุ่ม Datasheet) และเพิ่ม @media print ใน head ให้ซ่อน .app-chrome -> เหลือเฉพาะ #ds-content (Data Sheet + Curve + Drawing) บน A4.
 
 - **`fix` 2026-09-22 (c):** จัดอันดับใหม่เป็น "ใกล้ BEP" (เลือกรุ่นเล็ก/พอดีตัว) แทน efficiency อย่างเดียว — แก้ปัญหา EJ80-140 (ปั๊มใหญ่ eff สูง) ชนะรุ่นพอดีตัว (EJ50-120/EJ80-215) ที่ BEP ของมัน; efficiency กลายเป็น tie-break. พร้อม enforce min speed (กันปั๊มใบพัดตรึง `speed` วิ่งต่ำกว่าเส้น min curve).

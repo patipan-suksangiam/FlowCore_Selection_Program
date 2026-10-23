@@ -13,6 +13,9 @@
   (dropdown series แสดงคำอธิบายประเภทปั๊ม + กรองความถี่ 50/60 Hz; tolerance ±5/10/20/50%)
 - แสดง curve ที่ **interpolate ตาม duty** (เส้น Operate หนา) + ค่า Eff/Power/NPSHr @ duty จากข้อมูลจริง
 - รองรับปั๊ม 3 ประเภท: ใบพัดปรับได้ (EA/EAZ/EH/ES/EGM → หาเส้นผ่านศูนย์กลาง), ใบพัดตรึง (EJ → หาความเร็วรอบ), curve เดียว (FDL/FTD)
+- **EJT Series (Self-priming Sewage) — เพิ่ม 2026-10-23:** 4 รุ่น EJT3/EJT4/EJT6/EJT10 ใช้ `variantType: 'speed'`
+  ข้อมูลจาก curve ผู้ผลิตที่สกัดเป็นจุดทดสอบหลายความเร็ว (8–19 เส้นต่อรุ่น, 50 จุด/เส้น) — โปรแกรม interpolate ระหว่างเส้นความเร็ว + คำนวณรอบที่ต้องการด้วย Affinity Law (`reqSpeedFromAffinity`)
+  (EJT2 และ EJT8 ยังไม่เปิดจำหน่าย — เก็บ curve ไว้ในเว็บ `2026-10 FC Website/data/ejt_curves.json` พร้อม `available:false`)
 - **Dropdown "Curve Display" 3 โหมด** (หน้า Adjust Curve — แทนที่การแสดงเส้นใบพัดทุกใบ + checkbox VSD แบบเดิม):
   1. **Max / Min Impeller + Operating** — เส้นใบ Max/Min (เส้นประ) + เส้น Operate (เส้นทึบ)
   2. **Operating Curve only** — เส้น Operate เส้นเดียว
@@ -81,6 +84,12 @@ FlowCore-Selection-Program/
   · `none` = curve เดียว (FDL/FTD)
 - `allow` = ช่วง Flow ที่วิ่งได้ (Allowable Region จาก manufacturer)
 - E/P ของใบพัดกลาง = **ค่าจริง** (ไม่ประมาณ) — NPSH มีเฉพาะใบพัด max/min (มีกลไก fallback ไปใช้เส้นอ้างอิง)
+
+## แหล่งข้อมูล EJT
+
+- ไฟล์ต้นทาง: `EJT Performance Curve/EJT{2,3,4,6,8,10}.xlsx` (Performance Data 50 Pts ต่อความเร็ว)
+- แปลงเป็น DB ด้วยสคริปต์ `ejt_db_inject.py` (สร้าง `modelGroups` id `S65`, seriesId 65, variantType `speed`, `dia` = rpm)
+- ตรวจสอบ: 300 m³/h @ 30 m → EJT10 ที่ 1,188 rpm, 78.7%, 31.1 kW, NPSHr 3.06 m (ตรงกับเอนจินอิสระของเว็บ)
 
 ## หมายเหตุ
 
